@@ -1,4 +1,4 @@
-name: RIVAREN CI — Linux + Windows + Mac (compilación única)
+name: RIVAREN CI — Linux + Windows + Mac
 
 on:
   push:
@@ -6,11 +6,14 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_BUILD_JOBS: 0
+  # 0 no es válido para cargo: usa un valor positivo.
+  CARGO_BUILD_JOBS: 4
 
 jobs:
-  check-all:
+  test:
+    name: test (${{ matrix.os }})
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -18,30 +21,36 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin,aarch64-apple-darwin
+          components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Check + tests (nativo del runner)
+      - name: Dependencias del sistema (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config
+      - name: Tests
         run: cargo test --workspace --all-targets
-      - name: Clippy estricto
+      - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  cross-targets:
+  cross-check:
+    name: cross-check (linux → windows)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu,x86_64-pc-windows-gnu,x86_64-apple-darwin,aarch64-apple-darwin
+          targets: x86_64-pc-windows-gnu
       - uses: Swatinem/rust-cache@v2
-      - name: Check cruzado (los 4 targets sin linkear Mac)
+      - name: Dependencias del sistema
         run: |
-          cargo check -p rivaren-app --target x86_64-unknown-linux-gnu
-          cargo check -p rivaren-app --target x86_64-pc-windows-gnu
-          cargo check -p rivaren-app --target x86_64-apple-darwin || echo "(mac check requiere SDK: se verifica en macos-latest)"
-      - name: Compilador unificado xtask
-        run: cargo run -p xtask -- check-all || true
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config gcc-mingw-w64-x86-64
+      - name: Check Windows desde Linux
+        run: cargo check -p rivaren-app --target x86_64-pc-windows-gnu
 
   release:
+    name: release (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
@@ -51,10 +60,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Dependencias del sistema (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config
       - name: Build dist
         run: cargo build -p rivaren-app --profile dist
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: rivaren-${{ matrix.os }}
-          path: target/dist/rivaren*
+          path: |
+            target/dist/rivaren
+            target/dist/rivaren.exe
