@@ -114,8 +114,8 @@ fn run_screenshot_ingame(seed: u64, path: &str) -> Result<()> {
     cfg.render_distance = 4;
     cfg.gamemode = rivaren_gameplay::Gamemode::Creative;
     let mut session = game::GameSession::new(seed, cfg, &settings);
-    // Streaming hasta tener suficientes chunks.
-    for _ in 0..600 {
+    // Asegura chunks alrededor del spawn antes de la demo.
+    for _ in 0..900 {
         session.update_streaming(&mut renderer);
         if session.stats_chunks > 160 {
             break;
@@ -130,14 +130,73 @@ fn run_screenshot_ingame(seed: u64, path: &str) -> Result<()> {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    // Coloca al jugador sobre la superficie real.
-    let h = rivaren_world::sdf::surface_height(seed, 0.5, 0.5);
-    session.player.pos = glam::Vec3::new(0.5, h + 3.0, 0.5);
-    session.player.vel = glam::Vec3::ZERO;
+    // El spawn ya viene de find_spawn (superficie clamps); ajusta vista.
     session.player.flying = true;
     session.player.yaw = 0.7;
     session.player.pitch = -0.15;
+    let h = session.player.pos.y;
     session.spawn_npc("Iluminado", glam::Vec3::new(6.0, h + 1.0, 4.0));
+    // Demo de Pulso: palanca + cables + lámpara dentro del chunk del jugador.
+    let pc = glam::IVec3::new(
+        (session.player.pos.x / 32.0).floor() as i32,
+        (session.player.pos.y / 32.0).floor() as i32,
+        (session.player.pos.z / 32.0).floor() as i32,
+    );
+    while !session.chunks.contains_key(&pc) {
+        session.update_streaming(&mut renderer);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let base = pc * 32;
+    let lx = (session.player.pos.x as i32).rem_euclid(32);
+    let lz = (session.player.pos.z as i32).rem_euclid(32);
+    let py = base.y + (session.player.pos.y as i32).rem_euclid(32) - 2;
+    let bx = base.x + lx;
+    let bz = base.z + lz;
+    session.set_block(bx, py, bz, 82); // palanca
+    session
+        .pulso
+        .place([bx, py, bz], rivaren_physics::pulso::PulsoKind::Lever);
+    for x in [bx + 1, bx + 2, bx + 3] {
+        session.set_block(x, py, bz, 80); // cable
+        session
+            .pulso
+            .place([x, py, bz], rivaren_physics::pulso::PulsoKind::Cable);
+    }
+    session.set_block(bx + 4, py, bz, 86); // lámpara apagada
+    session
+        .pulso
+        .place([bx + 4, py, bz], rivaren_physics::pulso::PulsoKind::Lamp);
+    session.pulso.toggle([bx, py, bz]);
+    for _ in 0..10 {
+        session.tick_pulso();
+    }
+    if session.chunks.contains_key(&pc) {
+        session.remesh(pc, &mut renderer);
+    }
+    // Cámara mirando el circuito.
+    let eye = glam::Vec3::new(
+        (bx - 5) as f32 + 0.5,
+        (py + 3) as f32,
+        (bz - 5) as f32 + 0.5,
+    );
+    let target = glam::Vec3::new(
+        (bx + 2) as f32 + 0.5,
+        py as f32 + 0.5,
+        bz as f32 + 0.5,
+    );
+    session.player.pos = eye;
+    let dir = (target - eye).normalize();
+    session.player.yaw = dir.x.atan2(-dir.z);
+    session.player.pitch = dir.y.asin();
+    for _ in 0..10 {
+        session.update_streaming(&mut renderer);
+        std::thread::sleep(std::time::Duration::from_millis(8));
+    }
+    println!(
+        "  pulso: palanca=({bx},{py},{bz}) lámpara=({},{py},{bz}) → bloque {} (87 = encendida)",
+        bx + 4,
+        session.block_at(bx + 4, py, bz)
+    );
     session.message = Some(("RIVAREN — captura en juego".into(), 5.0));
     // Simula unos ticks para estabilizar.
     for _ in 0..40 {

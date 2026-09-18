@@ -1,5 +1,8 @@
 //! `rivaren-physics`: AABB vs SVDAG + tick queue + fluidos + circuito Pulso + fuego.
 
+pub mod pulso;
+pub use pulso::{GateMode, PulsoKind, PulsoWorld};
+
 use glam::Vec3;
 use rivaren_core::Aabb;
 use std::collections::BinaryHeap;
@@ -90,60 +93,6 @@ pub fn collide_aabb(
     (pos, hit)
 }
 
-/// Circuito «Pulso» (redstone original RIVAREN): grafo de componentes con
-/// orden topológico + batch por tipo, máx 1000 updates/frame, resto difiere.
-/// Niveles 0..15 como la luz, pero con retardo programable vía TickQueue.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PulsoKind {
-    Hilo,
-    Antorcha,
-    Bloque,
-    Repetidor(u8), // retardo 1..4 ticks
-    Comparador,
-    Piston,
-    Lampara,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct PulsoNode {
-    pub pos: [i32; 3],
-    pub kind: PulsoKind,
-    pub power: u8,
-}
-
-/// Un paso de propagación Pulso sobre el vecindario de 6.
-/// Retorna la potencia de salida (0..15). Puro y testeable.
-pub fn pulso_step(node: PulsoNode, neighbour_power: [u8; 6]) -> u8 {
-    let max_n = *neighbour_power.iter().max().unwrap_or(&0);
-    match node.kind {
-        PulsoKind::Antorcha => {
-            if max_n > 0 {
-                0
-            } else {
-                15
-            }
-        }
-        PulsoKind::Hilo => max_n.saturating_sub(1),
-        PulsoKind::Bloque => max_n,
-        PulsoKind::Repetidor(_) => {
-            if max_n > 0 {
-                15
-            } else {
-                0
-            }
-        }
-        PulsoKind::Comparador => max_n, // modo resta en Fase 7
-        PulsoKind::Piston => {
-            if max_n > 0 {
-                15
-            } else {
-                0
-            }
-        }
-        PulsoKind::Lampara => max_n,
-    }
-}
-
 /// Fluido «agua viva»: autómata celular (nivel 0..7 + bit cayendo).
 /// Reglas: cae si aire debajo; si no, se expande a 4 vecinos con nivel-1.
 /// Solo chunks activos (con fluido en movimiento) — ver fluid.comp.wgsl.
@@ -171,12 +120,6 @@ pub fn fluid_step(level_here: u8, below_solid: bool, neighbour_levels: [u8; 4]) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn pulso_torch_inverts() {
-        let t = PulsoNode { pos: [0, 0, 0], kind: PulsoKind::Antorcha, power: 0 };
-        assert_eq!(pulso_step(t, [0; 6]), 15);
-        assert_eq!(pulso_step(t, [15, 0, 0, 0, 0, 0]), 0);
-    }
     #[test]
     fn fluid_falls() {
         assert_eq!(fluid_step(7, false, [0; 4])[0], 7);

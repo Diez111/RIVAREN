@@ -60,11 +60,54 @@ pub fn item_table() -> &'static [ItemDef] {
         ItemDef { id: 71, name: "Relé de Pulso", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.70, 0.55, 0.30], places_block: 0, food: 0, description: "Retrasa y amplifica la señal." },
         ItemDef { id: 72, name: "Compuerta Lógica", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.45, 0.70, 0.55], places_block: 0, food: 0, description: "Y / O / NO / XOR configurable." },
         ItemDef { id: 73, name: "Pistón de Vaho", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.60, 0.60, 0.68], places_block: 0, food: 0, description: "Empuja bloques con la señal." },
-        ItemDef { id: 74, name: "Lámpara de Pulso", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [1.0, 0.85, 0.45], places_block: 0, food: 0, description: "Se enciende con cualquier señal." },
+        ItemDef { id: 74, name: "Lámpara de Pulso", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [1.0, 0.85, 0.45], places_block: 87, food: 0, description: "Se enciende con cualquier señal." },
+        // Componentes de Pulso (bloques interactivos).
+        ItemDef { id: 80, name: "Cable de Pulso", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.80, 0.25, 0.22], places_block: 80, food: 0, description: "Transporta señales de 0 a 15 con pérdida." },
+        ItemDef { id: 81, name: "Antorcha de Pulso", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [1.0, 0.65, 0.20], places_block: 81, food: 0, description: "Invierte la señal: brilla si no recibe energía." },
+        ItemDef { id: 82, name: "Palanca", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.70, 0.62, 0.42], places_block: 82, food: 0, description: "Interactúa para encender o apagar." },
+        ItemDef { id: 83, name: "Botón", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.55, 0.45, 0.40], places_block: 83, food: 0, description: "Pulso momentáneo de 1 segundo." },
+        ItemDef { id: 84, name: "Compuerta Lógica", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.45, 0.70, 0.55], places_block: 84, food: 0, description: "Y / O / NO / XOR según su modo." },
+        ItemDef { id: 85, name: "Pistón de Vaho", stack_max: 99, tool: Hand, tool_level: 0, durability: 0, color: [0.60, 0.60, 0.68], places_block: 85, food: 0, description: "Se extiende con la señal (versión simplificada)." },
     ]
 }
 
+/// Overlay de items añadidos por mods (id → definición).
+/// Los nombres se filtran con `Box::leak` para obtener `&'static str`.
+static MODDED: std::sync::OnceLock<Vec<(ItemId, ItemDef)>> = std::sync::OnceLock::new();
+
+pub fn register_modded_items(entries: Vec<(ItemId, String, u16, [f32; 3])>) -> usize {
+    let mut defs = Vec::new();
+    for (id, name, block, color) in entries {
+        let name: &'static str = Box::leak(name.into_boxed_str());
+        defs.push((
+            id,
+            ItemDef {
+                id,
+                name,
+                stack_max: 99,
+                tool: ToolKind::Hand,
+                tool_level: 0,
+                durability: 0,
+                color,
+                places_block: block,
+                food: 0,
+                description: "Contenido aportado por un mod.",
+            },
+        ));
+    }
+    let n = defs.len();
+    let _ = MODDED.set(defs);
+    n
+}
+
+pub fn modded_items() -> &'static [(ItemId, ItemDef)] {
+    MODDED.get().map(|v| v.as_slice()).unwrap_or(&[])
+}
+
 pub fn item_def(id: ItemId) -> &'static ItemDef {
+    if let Some(found) = modded_items().iter().find(|(i, _)| *i == id) {
+        return &found.1;
+    }
     let t = item_table();
     t.get(id as usize).unwrap_or(&t[0])
 }

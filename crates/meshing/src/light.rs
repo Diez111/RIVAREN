@@ -23,6 +23,9 @@ fn emissive(v: BlockId) -> u8 {
     match v {
         30 => 12, // marco de portal
         21 => 5,  // losa de plaza (brillo tenue)
+        81 => 14, // antorcha de Pulso (encendida)
+        87 => 15, // lámpara de Pulso (encendida)
+        90 => 8,  // palanca activa
         _ => 0,
     }
 }

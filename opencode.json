@@ -1,0 +1,78 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "small_model": "opencode-go/qwen3.8-flash",
+  "agent": {
+    "architect": {
+      "description": "Arquitecto de RIVAREN: descompone fases, decide ADRs y valida el plan maestro.",
+      "mode": "primary",
+      "model": "opencode-go/qwen3.8-max",
+      "temperature": 0.2,
+      "permission": { "edit": "ask", "bash": { "cargo *": "allow", "*": "ask" } }
+    },
+    "engine-dev": {
+      "description": "Implementa world/compression/meshing/physics con benchmarks obligatorios.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4.1-flash",
+      "temperature": 0.2,
+      "permission": { "edit": "allow", "bash": { "cargo test *": "allow", "cargo bench *": "allow", "cargo check *": "allow", "*": "ask" } }
+    },
+    "render-dev": {
+      "description": "Shaders WGSL y pases del renderer (wgpu 29): sombras, GI, post, agua.",
+      "mode": "subagent",
+      "model": "opencode-go/kimi-k2.7-code",
+      "temperature": 0.2,
+      "permission": { "edit": "allow", "bash": { "cargo *": "allow", "*": "ask" } }
+    },
+    "ui-dev": {
+      "description": "Toolkit UI propio y pantallas de RIVAREN sin desbordes (responsive).",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4.1-flash",
+      "temperature": 0.3,
+      "permission": { "edit": "allow", "bash": { "cargo *": "allow", "*": "ask" } }
+    },
+    "ai-npc-dev": {
+      "description": "Crate rivaren-ai: proveedores LLM, prompts, memoria de NPCs y fallback determinista.",
+      "mode": "subagent",
+      "model": "opencode-go/qwen3.7-plus",
+      "temperature": 0.3,
+      "permission": { "edit": "allow", "bash": { "cargo *": "allow", "*": "ask" } }
+    },
+    "bench-guard": {
+      "description": "Vigila regresiones: corre tests y benchmarks, compara con el presupuesto del plan.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4.1-flash",
+      "temperature": 0.1,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "cargo test *": "allow",
+          "cargo bench *": "allow",
+          "cargo run -p xtask *": "allow",
+          "cargo run -p rivaren-app *": "allow",
+          "*": "deny"
+        }
+      }
+    },
+    "reviewer": {
+      "description": "Revisa PRs Rust de RIVAREN: determinismo, presupuestos de frame, seguridad.",
+      "mode": "subagent",
+      "model": "opencode-go/glm-5.2",
+      "temperature": 0.1,
+      "permission": { "edit": "deny", "bash": { "cargo clippy *": "allow", "cargo fmt *": "allow", "*": "deny" } }
+    }
+  },
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "cargo *": "allow",
+      "git status": "allow",
+      "git log *": "allow",
+      "git diff *": "allow",
+      "rm -rf *": "deny",
+      "git push*": "ask",
+      "*": "ask"
+    }
+  }
+}

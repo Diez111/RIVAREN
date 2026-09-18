@@ -10,6 +10,7 @@ use rivaren_gameplay::{
 };
 use rivaren_gameplay::dialogue::{DialogueTree, NpcMemory, tree_for};
 use rivaren_meshing::{MeshData, bake_lighting, greedy_mesh_lit};
+use rivaren_physics::pulso::{GateMode, PulsoKind, PulsoWorld};
 use rivaren_render::{Camera, Renderer};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicBool;
@@ -115,14 +116,17 @@ pub struct GameSession {
     pub break_target: Option<BreakTarget>,
     pub crafted: Vec<u16>,
     pub talked: Vec<String>,
+    pub dirty_pending: Vec<IVec3>,
     pub stats_chunks: usize,
     pub message: Option<(String, f32)>,
     pub dimension_switch_flash: f32,
     pub edits: HashMap<[i32; 3], u16>,
+    pub pulso: PulsoWorld,
     pub health: f32,
     pub hunger: f32,
     pub step_timer: f32,
     pub fall_start: f32,
+    pub pulso_accum: f32,
 }
 
 impl GameSession {
@@ -167,6 +171,18 @@ impl GameSession {
                 inv.add(ItemStack::with_count(30, 8));
                 inv.add(ItemStack::with_count(42, 2));
                 inv.add(ItemStack::with_count(61, 5));
+                // Componentes de Pulso para probar el sistema.
+                inv.add(ItemStack::with_count(80, 32));
+                inv.add(ItemStack::with_count(81, 8));
+                inv.add(ItemStack::with_count(82, 4));
+                inv.add(ItemStack::with_count(83, 4));
+                inv.add(ItemStack::with_count(84, 2));
+                inv.add(ItemStack::with_count(85, 2));
+                inv.add(ItemStack::with_count(86, 4));
+                // Bloques de mods (si hay).
+                for (id, _) in rivaren_gameplay::items::modded_items() {
+                    inv.add(ItemStack::with_count(*id, 16));
+                }
                 inv
             },
             karma: Karma::default(),
@@ -191,6 +207,7 @@ impl GameSession {
             break_target: None,
             crafted: Vec::new(),
             talked: Vec::new(),
+            dirty_pending: Vec::new(),
             stats_chunks: 0,
             message: Some((
                 "Bienvenido a RIVAREN. WASD mover, ratón mirar, F hablar, E inventario, R diario."
@@ -199,22 +216,39 @@ impl GameSession {
             )),
             dimension_switch_flash: 0.0,
             edits: HashMap::new(),
+            pulso: PulsoWorld::new(),
             health: 20.0,
             hunger: 20.0,
             step_timer: 0.0,
             fall_start: 0.0,
+            pulso_accum: 0.0,
         }
     }
 
     pub fn find_spawn(seed: u64, dim: Dimension) -> Vec3 {
-        let (x, z) = (0.5f32, 0.5f32);
         match dim {
             Dimension::Tierra => {
-                let h = rivaren_world::sdf::surface_height(seed, x, z).max(65.0);
-                Vec3::new(x, h + 3.0, z)
+                // Busca tierra firme sobre el nivel del mar en espiral.
+                for r in 0i32..24 {
+                    for dz in -r..=r {
+                        for dx in -r..=r {
+                            if dx.abs() != r && dz.abs() != r {
+                                continue;
+                            }
+                            let x = dx as f32 * 32.0 + 0.5;
+                            let z = dz as f32 * 32.0 + 0.5;
+                            let h = rivaren_world::sdf::surface_height(seed, x, z);
+                            if (63.0..150.0).contains(&h) {
+                                return Vec3::new(x, h + 2.0, z);
+                            }
+                        }
+                    }
+                }
+                let h = rivaren_world::sdf::surface_height(seed, 0.5, 0.5).max(66.0);
+                Vec3::new(0.5, h + 2.0, 0.5)
             }
-            Dimension::Cielo => Vec3::new(x, 140.0, z),
-            Dimension::Infierno => Vec3::new(x, 40.0, z),
+            Dimension::Cielo => Vec3::new(0.5, 140.0, 0.5),
+            Dimension::Infierno => Vec3::new(0.5, 40.0, 0.5),
         }
     }
 
@@ -261,8 +295,26 @@ impl GameSession {
         }
         // Sube resultados (presupuesto por frame).
         let mut uploaded = 0;
-        while let Ok((key, voxels, mesh)) = self.gen_rx.try_recv() {
+        while let Ok((key, mut voxels, mut mesh)) = self.gen_rx.try_recv() {
             self.pending.remove(&key);
+            // Reaplica ediciones locales del jugador (delta log) sobre el chunk nuevo.
+            let base = IVec3::new(key.x * 32, key.y * 32, key.z * 32);
+            let mut edited = false;
+            for (p, v) in &self.edits {
+                let d = IVec3::new(p[0] - base.x, p[1] - base.y, p[2] - base.z);
+                if d.x >= 0 && d.y >= 0 && d.z >= 0 && d.x < 32 && d.y < 32 && d.z < 32 {
+                    let idx = (d.y as usize * 32 + d.z as usize) * 32 + d.x as usize;
+                    if voxels[idx] != *v {
+                        voxels[idx] = *v;
+                        edited = true;
+                    }
+                }
+            }
+            if edited {
+                let light = bake_lighting(&voxels);
+                mesh = MeshData::default();
+                greedy_mesh_lit(&voxels, &light, &mut mesh);
+            }
             if uploaded < 6 {
                 renderer.upload_chunk(key, &mesh);
                 self.chunks.insert(key, ChunkData { voxels });
@@ -273,6 +325,21 @@ impl GameSession {
                 break;
             }
         }
+        // Re-meshea chunks con cambios de Pulso (presupuesto por frame).
+        let pending = std::mem::take(&mut self.dirty_pending);
+        let mut remeshed = 0;
+        let mut keep = Vec::new();
+        for key in pending {
+            if remeshed < 2 {
+                if self.chunks.contains_key(&key) {
+                    self.remesh(key, renderer);
+                    remeshed += 1;
+                }
+            } else {
+                keep.push(key);
+            }
+        }
+        self.dirty_pending = keep;
         // Evicta lejanos.
         let mut to_remove = Vec::new();
         for key in self.chunks.keys() {
@@ -334,6 +401,28 @@ impl GameSession {
         let mut mesh = MeshData::default();
         greedy_mesh_lit(&c.voxels, &light, &mut mesh);
         renderer.upload_chunk(key, &mesh);
+    }
+
+    /// Tick del sistema Pulso: aplica cambios de estado a los bloques.
+    pub fn tick_pulso(&mut self) -> usize {
+        let changes = self.pulso.tick_step(256);
+        let mut applied = 0;
+        for (pos, power) in changes {
+            let Some(node) = self.pulso.nodes.get(&pos).copied() else {
+                continue;
+            };
+            let want = pulso_block_for_state(node.kind, power);
+            if want == 0 {
+                continue;
+            }
+            if self.block_at(pos[0], pos[1], pos[2]) != want {
+                self.set_block(pos[0], pos[1], pos[2], want);
+                applied += 1;
+                let keys = self.mark_dirty(pos[0], pos[1], pos[2]);
+                self.dirty_pending.extend(keys);
+            }
+        }
+        applied
     }
 
     /// Marca dirty el chunk del bloque + vecinos si toca borde.
@@ -601,6 +690,7 @@ impl GameSession {
         };
         if progress >= 1.0 {
             self.set_block(pos.x, pos.y, pos.z, AIR);
+            self.pulso.remove([pos.x, pos.y, pos.z]);
             let item = item_for_block(block);
             if item != 0 {
                 self.inventory.add(ItemStack::new(item));
@@ -652,6 +742,10 @@ impl GameSession {
             return;
         }
         self.set_block(target.x, target.y, target.z, def.places_block);
+        if let Some(kind) = pulso_kind_for_block(def.places_block) {
+            self.pulso
+                .place([target.x, target.y, target.z], kind);
+        }
         if let Some(s) = self.inventory.held_mut() {
             s.count = s.count.saturating_sub(1);
             if s.count == 0 {
@@ -673,9 +767,17 @@ impl GameSession {
     }
 
     pub fn interact(&mut self) {
-        // Portal → cambio de dimensión.
         if let Some((pos, _)) = self.raycast(5.5) {
-            if self.block_at(pos.x, pos.y, pos.z) == 30 {
+            let b = self.block_at(pos.x, pos.y, pos.z);
+            // Pulso: palanca / botón.
+            if matches!(b, 82 | 90 | 83) {
+                self.pulso.toggle([pos.x, pos.y, pos.z]);
+                self.tick_pulso();
+                self.audio.play(Sfx::Click, 0.7, 0.0);
+                return;
+            }
+            // Portal → cambio de dimensión.
+            if b == 30 {
                 self.use_portal();
                 return;
             }
@@ -951,6 +1053,12 @@ impl GameSession {
     // ── Tick global ──────────────────────────────────────────────
 
     pub fn tick(&mut self, dt: f32) {
+        // Pulso a 20 TPS.
+        self.pulso_accum += dt;
+        if self.pulso_accum >= 0.05 {
+            self.pulso_accum = 0.0;
+            self.tick_pulso();
+        }
         // Tiempo: 1 día = 20 min reales.
         self.time_of_day = (self.time_of_day + dt / 1200.0) % 1.0;
         // Clima.
@@ -1011,6 +1119,51 @@ pub struct PlayerInput {
     pub jump: bool,
     pub sneak: bool,
     pub sprint: bool,
+}
+
+/// Mapea bloque colocado a componente de Pulso.
+pub fn pulso_kind_for_block(b: u16) -> Option<PulsoKind> {
+    match b {
+        80 => Some(PulsoKind::Cable),
+        81 | 89 => Some(PulsoKind::Torch),
+        82 | 90 => Some(PulsoKind::Lever),
+        83 => Some(PulsoKind::Button),
+        84 => Some(PulsoKind::Gate(GateMode::Or)),
+        85 | 88 => Some(PulsoKind::Block),
+        _ => None,
+    }
+}
+
+/// Bloque que representa el estado actual del componente.
+pub fn pulso_block_for_state(kind: PulsoKind, power: u8) -> u16 {
+    let on = power > 0;
+    match kind {
+        PulsoKind::Cable => 80,
+        PulsoKind::Torch => {
+            if on {
+                81
+            } else {
+                89
+            }
+        }
+        PulsoKind::Lever => {
+            if on {
+                90
+            } else {
+                82
+            }
+        }
+        PulsoKind::Button => 83,
+        PulsoKind::Gate(_) => 84,
+        PulsoKind::Lamp => {
+            if on {
+                87
+            } else {
+                86
+            }
+        }
+        PulsoKind::Block => 85,
+    }
 }
 
 // ── Generadores de dimensiones alternativas ──────────────────────────

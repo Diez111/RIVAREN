@@ -130,17 +130,31 @@ fn fs_tonemap(in: VsOut) -> @location(0) vec4<f32> {
     return vec4<f32>(ldr, 1.0);
 }
 
-// ── Upscale + sharpen (CAS-lite) → surface ──
+// ── Upscale + sharpen (CAS-lite) + lluvia → surface ──
 @fragment
 fn fs_upscale(in: VsOut) -> @location(0) vec4<f32> {
     let c = textureSample(src_tex, lin_smp, in.uv).rgb;
-    if (p.sharpen <= 0.0) {
-        return vec4<f32>(c, 1.0);
+    var col = c;
+    if (p.sharpen > 0.0) {
+        let n = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(0.0, -p.texel.y)).rgb;
+        let s = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(0.0, p.texel.y)).rgb;
+        let e = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(p.texel.x, 0.0)).rgb;
+        let w = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(-p.texel.x, 0.0)).rgb;
+        col = col + (c * 4.0 - n - s - e - w) * p.sharpen * 0.25;
     }
-    let n = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(0.0, -p.texel.y)).rgb;
-    let s = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(0.0, p.texel.y)).rgb;
-    let e = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(p.texel.x, 0.0)).rgb;
-    let w = textureSample(src_tex, lin_smp, in.uv + vec2<f32>(-p.texel.x, 0.0)).rgb;
-    let sharp = c + (c * 4.0 - n - s - e - w) * p.sharpen * 0.25;
-    return vec4<f32>(clamp(sharp, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    // Lluvia: estelas procedurales cuando el clima supera 0.3.
+    let weather = g.misc.w;
+    if (weather > 0.3) {
+        let t = g.cam_pos.w * 0.016;
+        let grid = in.uv * vec2<f32>(90.0, 50.0);
+        let cell = floor(grid);
+        let f = fract(grid);
+        let rnd = fract(sin(dot(cell, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+        let speed = 1.5 + rnd * 1.5;
+        let ry = fract(f.y + t * speed);
+        let streak = smoothstep(0.82, 1.0, ry) * smoothstep(0.06, 0.0, abs(f.x - 0.5));
+        let amount = clamp((weather - 0.3) * 1.4, 0.0, 0.75) * streak;
+        col = mix(col, vec3<f32>(0.72, 0.78, 0.92), amount);
+    }
+    return vec4<f32>(clamp(col, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }

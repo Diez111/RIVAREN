@@ -33,7 +33,28 @@ struct VsOut {
     @location(5) view_depth: f32,
 };
 
+fn hsv2rgb(h: f32, s: f32, v: f32) -> vec3<f32> {
+    let i = floor(h * 6.0);
+    let f = h * 6.0 - i;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - f * s);
+    let t = v * (1.0 - (1.0 - f) * s);
+    let m = i32(i) % 6;
+    if (m == 0) { return vec3<f32>(v, t, p); }
+    if (m == 1) { return vec3<f32>(q, v, p); }
+    if (m == 2) { return vec3<f32>(p, v, t); }
+    if (m == 3) { return vec3<f32>(p, q, v); }
+    if (m == 4) { return vec3<f32>(t, p, v); }
+    return vec3<f32>(v, p, q);
+}
+
 fn block_color(tex: u32) -> vec3<f32> {
+    // Bloques de mods (id >= 200): color determinista del id.
+    if (tex >= 200u) {
+        let hash = (tex * 2654435761u) >> 8u;
+        let hue = f32(hash & 65535u) / 65535.0;
+        return hsv2rgb(hue, 0.55, 0.85);
+    }
     switch tex {
         case 1u: { return vec3<f32>(0.32, 0.58, 0.26); } // hierba ferral
         case 2u: { return vec3<f32>(0.44, 0.31, 0.20); } // tierra
@@ -42,6 +63,17 @@ fn block_color(tex: u32) -> vec3<f32> {
         case 20u: { return vec3<f32>(0.16, 0.40, 0.78); } // agua viva
         case 21u: { return vec3<f32>(0.68, 0.66, 0.74); } // losa plaza
         case 30u: { return vec3<f32>(0.72, 0.40, 0.92); } // marco portal
+        case 80u: { return vec3<f32>(0.80, 0.25, 0.22); } // cable de Pulso
+        case 81u: { return vec3<f32>(1.00, 0.72, 0.28); } // antorcha encendida
+        case 89u: { return vec3<f32>(0.35, 0.30, 0.28); } // antorcha apagada
+        case 82u: { return vec3<f32>(0.70, 0.62, 0.42); } // palanca
+        case 90u: { return vec3<f32>(0.95, 0.85, 0.45); } // palanca activa
+        case 83u: { return vec3<f32>(0.55, 0.45, 0.40); } // botón
+        case 84u: { return vec3<f32>(0.45, 0.70, 0.55); } // compuerta
+        case 85u: { return vec3<f32>(0.60, 0.60, 0.68); } // pistón
+        case 86u: { return vec3<f32>(0.55, 0.48, 0.35); } // lámpara apagada
+        case 87u: { return vec3<f32>(1.00, 0.92, 0.55); } // lámpara encendida
+        case 88u: { return vec3<f32>(0.70, 0.70, 0.76); } // cabeza de pistón
         default: { return vec3<f32>(0.78, 0.32, 0.80); }
     }
 }

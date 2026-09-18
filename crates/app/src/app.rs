@@ -75,6 +75,38 @@ pub struct App {
 
 pub fn run() -> Result<()> {
     let event_loop = EventLoop::new()?;
+    // Mods de datos (JSON) desde la carpeta de usuario.
+    let mut mod_registry = rivaren_mods::ModRegistry::new();
+    let mods_dir = save::data_dir().join("mods");
+    match mod_registry.load_dir(&mods_dir) {
+        Ok(n) if n > 0 => tracing::info!("{n} mod(s) cargados de {}", mods_dir.display()),
+        _ => {}
+    }
+    {
+        // Registra los bloques de los mods como items colocables (ids 200+).
+        let mut entries = Vec::new();
+        for (id, (block_id, def)) in mod_registry.blocks.iter() {
+            let color = def
+                .color
+                .unwrap_or_else(|| rivaren_mods::mod_block_color(*block_id));
+            entries.push((
+                *block_id,
+                def.name.clone(),
+                *block_id,
+                color,
+            ));
+            let _ = id;
+        }
+        if !entries.is_empty() {
+            let n = rivaren_gameplay::items::register_modded_items(entries);
+            tracing::info!("{n} bloques de mods registrados como items");
+        }
+    }
+    let mods_loaded: Vec<String> = mod_registry
+        .mods
+        .iter()
+        .map(|m| format!("{} v{} ({} bloques)", m.manifest.name, m.manifest.version, m.manifest.blocks.len()))
+        .collect();
     let mut app = App {
         screen: Screen::MainMenu,
         settings: save::load_settings(),
@@ -93,7 +125,7 @@ pub fn run() -> Result<()> {
         cursor_item: None,
         text_buffers: HashMap::new(),
         pending_world: None,
-        mods_loaded: vec![],
+        mods_loaded,
         error: None,
         save_name: "mundo".into(),
         settings_tab: 0,
