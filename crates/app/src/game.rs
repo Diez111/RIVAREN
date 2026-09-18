@@ -1153,7 +1153,7 @@ impl GameSession {
             mob.wander_timer -= dt * rate as f32;
             if mob.wander_timer <= 0.0 {
                 mob.wander_timer = 2.0 + (mob.id as f32 * 0.37).sin().abs() * 4.0;
-                let a = (mob.id as f32 * 1.13 + time * 6.28).sin();
+                let a = (mob.id as f32 * 1.13 + time * std::f32::consts::TAU).sin();
                 mob.yaw = a * std::f32::consts::TAU;
             }
             let speed = if mob.species.hostile() && d < 16.0 { 3.2 } else { 1.4 };
@@ -1388,9 +1388,6 @@ impl GameSession {
         self.poll_ai();
     }
 
-    pub fn player_input_forward(&self) -> [f32; 3] {
-        self.player.forward().to_array()
-    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]

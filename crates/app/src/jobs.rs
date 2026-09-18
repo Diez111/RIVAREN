@@ -1,3 +1,4 @@
+#![allow(dead_code)] // Scheduler con deadlines: infraestructura para streaming futuro.
 //! Job system con deadlines: ningún job bloquea el frame.
 //! Cancelación cooperativa vía AtomicBool (chequeo cada N iters).
 

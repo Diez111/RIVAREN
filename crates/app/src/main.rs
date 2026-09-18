@@ -93,12 +93,13 @@ fn run_screenshot(path: &str) -> Result<()> {
         cursor_held: false,
         cursor_item: None,
         text_buffers: Default::default(),
-        pending_world: None,
         mods_loaded: vec![],
         error: None,
         save_name: "mundo".into(),
         settings_tab: 0,
         quickstart: false,
+        budget: crate::budget::FrameBudget::new(60),
+        loading_started: None,
     };
     app.input.screen = (960.0, 600.0);
     let mut draw = DrawList::default();
@@ -140,10 +141,12 @@ fn run_screenshot_ingame(seed: u64, path: &str) -> Result<()> {
 
     let mut renderer = Renderer::new(None, (1280, 720), QualityTier::Balanced)?;
     let settings = rivaren_gameplay::Settings::default();
-    let mut cfg = rivaren_gameplay::WorldConfig::default();
-    cfg.seed = seed;
-    cfg.render_distance = 4;
-    cfg.gamemode = rivaren_gameplay::Gamemode::Creative;
+    let cfg = rivaren_gameplay::WorldConfig {
+        seed,
+        render_distance: 4,
+        gamemode: rivaren_gameplay::Gamemode::Creative,
+        ..Default::default()
+    };
     let mut session = game::GameSession::new(seed, cfg, &settings);
     // Asegura chunks alrededor del spawn antes de la demo.
     for _ in 0..900 {
@@ -238,8 +241,10 @@ fn run_screenshot_ingame(seed: u64, path: &str) -> Result<()> {
     // Construye un frame de HUD con el toolkit.
     let mut app_draw = rivaren_core::DrawList::default();
     {
-        let mut input = rivaren_ui::input::InputState::default();
-        input.screen = (1280.0, 720.0);
+        let input = rivaren_ui::input::InputState {
+            screen: (1280.0, 720.0),
+            ..Default::default()
+        };
         let mut ui = rivaren_ui::widgets::Ui::new(
             &mut app_draw,
             &input,

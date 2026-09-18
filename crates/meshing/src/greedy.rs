@@ -65,8 +65,7 @@ fn is_transparent(v: BlockId) -> bool {
 pub fn greedy_mesh(voxels: &[BlockId; 32768], out: &mut MeshData) {
     // Fast path: si el chunk es homogéneo (1-2 valores), emite directo.
     // Caso común en terreno: gran masa sólida + aire → 6 quads sin escaneo 3-axis.
-    if let Some(quads) = try_uniform_fast_path(voxels, out) {
-        quads;
+    if try_uniform_fast_path(voxels, out).is_some() {
         return;
     }
     out.clear();
@@ -159,30 +158,6 @@ fn try_uniform_fast_path(voxels: &[BlockId; 32768], out: &mut MeshData) -> Optio
 
 fn is_solid(v: BlockId) -> bool {
     v != AIR
-}
-
-fn mesh_axis_y(voxels: &[BlockId; 32768], out: &mut MeshData) {
-    // Caras +Y (face 2) y -Y (face 3).
-    for y in 0..32 {
-        // Dos planos: visible si sólido de un lado y aire/transparente del otro.
-        let mut face_up = [[None; 32]; 32]; // [z][x] -> block
-        let mut face_dn = [[None; 32]; 32];
-        for z in 0..32 {
-            for x in 0..32 {
-                let cur = voxels[(y * 32 + z) * 32 + x];
-                let above = if y + 1 < 32 { voxels[((y + 1) * 32 + z) * 32 + x] } else { AIR };
-                let below = if y > 0 { voxels[((y - 1) * 32 + z) * 32 + x] } else { AIR };
-                if is_solid(cur) && !is_solid(above) {
-                    face_up[z][x] = Some(cur);
-                }
-                if is_solid(cur) && !is_solid(below) {
-                    face_dn[z][x] = Some(cur);
-                }
-            }
-        }
-        greedy_merge_2d(&face_up, y as u8, 2, out);
-        greedy_merge_2d(&face_dn, y as u8, 3, out);
-    }
 }
 
 fn mesh_axis_x(voxels: &[BlockId; 32768], out: &mut MeshData) {
@@ -352,7 +327,8 @@ fn emit_vertices(out: &mut MeshData, light: Option<&[u8; 32768]>) {
         (v & 0xF, (v >> 4) & 0xF)
     }
     for face in 0..6 {
-        for q in out.quads[face].clone() {
+        let quads: Vec<Quad> = out.quads[face].clone();
+    for q in quads {
             let base = out.vertices.len() as u32;
             // 4 vértices por quad (posición depende de la cara; simplificado:
             // codificamos origen + w/h, el vertex shader expande).

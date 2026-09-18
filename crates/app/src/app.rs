@@ -38,17 +38,6 @@ pub enum Screen {
     Credits,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
-    None,
-    Quit,
-    Go(Screen),
-    StartWorld,
-    Resume,
-    SaveWorld,
-    Respawn,
-}
-
 pub struct App {
     pub screen: Screen,
     pub settings: Settings,
@@ -66,12 +55,13 @@ pub struct App {
     pub cursor_held: bool,
     pub cursor_item: Option<ItemStack>,
     pub text_buffers: HashMap<u64, String>,
-    pub pending_world: Option<(String, Option<save::SaveData>)>,
     pub mods_loaded: Vec<String>,
     pub error: Option<String>,
     pub save_name: String,
     pub settings_tab: usize,
     pub quickstart: bool,
+    pub budget: crate::budget::FrameBudget,
+    pub loading_started: Option<Instant>,
 }
 
 pub fn run() -> Result<()> {
@@ -126,12 +116,13 @@ pub fn run() -> Result<()> {
         cursor_held: false,
         cursor_item: None,
         text_buffers: HashMap::new(),
-        pending_world: None,
         mods_loaded,
         error: None,
         save_name: "mundo".into(),
         settings_tab: 0,
         quickstart,
+        budget: crate::budget::FrameBudget::new(60),
+        loading_started: None,
     };
     app.text_buffers.insert(1000, String::new()); // seed
     app.text_buffers.insert(1001, app.world_cfg.name.clone());
@@ -248,8 +239,8 @@ impl App {
             r.tier = tier;
         }
         self.session = Some(session);
-        self.screen = Screen::Game;
-        self.set_cursor_held(true);
+        self.screen = Screen::Loading;
+        self.loading_started = Some(Instant::now());
         self.save_name = name;
     }
 
@@ -297,8 +288,7 @@ impl App {
         }
     }
 
-    fn update_game(&mut self, dt: f32) -> Action {
-        let mut action = Action::None;
+    fn update_game(&mut self, dt: f32) {
         // Hotbar.
         let digits = [
             Key::Digit1,
@@ -329,22 +319,22 @@ impl App {
         if self.input.key_pressed(Key::Escape) {
             self.screen = Screen::Pause;
             self.set_cursor_held(false);
-            return action;
+            return;
         }
         if self.input.key_pressed(Key::E) {
             self.screen = Screen::Inventory;
             self.set_cursor_held(false);
-            return action;
+            return;
         }
         if self.input.key_pressed(Key::C) {
             self.screen = Screen::Crafting;
             self.set_cursor_held(false);
-            return action;
+            return;
         }
         if self.input.key_pressed(Key::J) || self.input.key_pressed(Key::R) {
             self.screen = Screen::Journal;
             self.set_cursor_held(false);
-            return action;
+            return;
         }
         if self.input.key_pressed(Key::F3) {
             self.debug = !self.debug;
@@ -388,7 +378,10 @@ impl App {
         // Interacción con bloques.
         if let (Some(renderer), Some(s)) = (self.renderer.as_mut(), self.session.as_mut()) {
             if self.input.mouse_down && self.cursor_held {
-                s.try_break(dt, renderer);
+                // Prioriza golpear mobs; si no hay, rompe bloque.
+                if !s.attack_mob() {
+                    s.try_break(dt, renderer);
+                }
             }
             if self.input.mouse_pressed && self.cursor_held {
                 s.try_place(renderer);
@@ -416,11 +409,9 @@ impl App {
             if s.health <= 0.0 {
                 self.screen = Screen::Death;
                 self.set_cursor_held(false);
-                action = Action::Respawn;
             }
         }
         let _ = edits_snapshot;
-        action
     }
 
     fn build_ui(&mut self) {
@@ -458,13 +449,28 @@ impl App {
         if self.fps_acc.0 >= 0.5 {
             self.fps = self.fps_acc.1 as f32 / self.fps_acc.0;
             self.fps_acc = (0.0, 0);
+            // Resolución dinámica: ajusta la escala de render al presupuesto.
+            let scale = self.budget.adapt_resolution(self.fps, self.settings.graphics.render_scale);
+            if (scale - self.settings.graphics.render_scale).abs() > 0.01 {
+                self.settings.graphics.render_scale = scale;
+            }
         }
 
-        let mut action = Action::None;
         if self.screen == Screen::Game {
-            action = self.update_game(dt);
+            self.update_game(dt);
+        } else if self.screen == Screen::Loading {
+            if let (Some(r), Some(s)) = (self.renderer.as_mut(), self.session.as_mut()) {
+                s.update_streaming(r);
+                let elapsed = self
+                    .loading_started
+                    .map(|t| t.elapsed().as_secs_f32())
+                    .unwrap_or(0.0);
+                if s.stats_chunks > 120 || elapsed > 6.0 {
+                    self.screen = Screen::Game;
+                    self.set_cursor_held(true);
+                }
+            }
         }
-        let _ = action;
         self.build_ui();
 
         // Escena para el renderer.
@@ -514,7 +520,39 @@ impl App {
             )
         };
         let _ = (aspect, cam);
-        if let Some(r) = self.renderer.as_mut() {
+        if let (Some(r), Some(session)) = (self.renderer.as_mut(), self.session.as_ref()) {
+            let mut entities: Vec<rivaren_render::EntityInstance> =
+                Vec::with_capacity(session.mobs.len() + session.npcs.len());
+            for mob in &session.mobs {
+                let size = mob.species.size();
+                entities.push(rivaren_render::EntityInstance {
+                    pos: [mob.pos.x, mob.pos.y + size[1] * 0.5, mob.pos.z],
+                    _pad0: 0.0,
+                    size,
+                    _pad1: 0.0,
+                    color: mob.species.color(),
+                });
+            }
+            for npc in &session.npcs {
+                let color = match npc.kind {
+                    "Iluminado" => [0.95, 0.92, 0.70, 1.0],
+                    "Penitente" => [0.75, 0.30, 0.25, 1.0],
+                    _ => [0.7, 0.7, 0.7, 1.0],
+                };
+                entities.push(rivaren_render::EntityInstance {
+                    pos: [npc.pos.x, npc.pos.y + 0.9, npc.pos.z],
+                    _pad0: 0.0,
+                    size: [0.7, 1.8, 0.7],
+                    _pad1: 0.0,
+                    color,
+                });
+            }
+            r.set_entities(&entities);
+            if let Err(e) = r.render(&scene, &self.draw) {
+                tracing::error!("render: {e:#}");
+            }
+        } else if let Some(r) = self.renderer.as_mut() {
+            r.set_entities(&[]);
             if let Err(e) = r.render(&scene, &self.draw) {
                 tracing::error!("render: {e:#}");
             }
@@ -700,10 +738,4 @@ fn map_key(pk: PhysicalKey) -> Option<Key> {
         KeyCode::Backspace => Key::Backspace,
         _ => return None,
     })
-}
-
-impl App {
-    pub fn save_name_default() -> String {
-        "mundo".into()
-    }
 }

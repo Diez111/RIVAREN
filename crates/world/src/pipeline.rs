@@ -51,12 +51,12 @@ pub fn generate_chunk(
     // no por vóxel. Ahorra ~32x fBm (de 7ms → ~2ms). Cache 32×32 en stack.
     let mut heights = [[0.0f32; 32]; 32];
     let mut biomes = [[0u16; 32]; 32];
-    for z in 0..32 {
-        for x in 0..32 {
+    for (z, (row_h, row_b)) in heights.iter_mut().zip(biomes.iter_mut()).enumerate() {
+        for (x, (h, b)) in row_h.iter_mut().zip(row_b.iter_mut()).enumerate() {
             let wx = (base.x + x as i32) as f32;
             let wz = (base.z + z as i32) as f32;
-            heights[z][x] = super::sdf::surface_height(seed, wx, wz);
-            biomes[z][x] = sample_biome(seed, wx, wz);
+            *h = super::sdf::surface_height(seed, wx, wz);
+            *b = sample_biome(seed, wx, wz);
         }
         if cancel.load(Ordering::Relaxed) {
             break;
@@ -99,9 +99,9 @@ pub fn generate_chunk(
     }
     // Estratos: solo la PRIMERA capa sólida desde arriba lleva hierba/tierra;
     // los techos de cueva y estantes interiores quedan de piedra.
-    for z in 0..32 {
-        for x in 0..32 {
-            let biome = biomes[z][x];
+    for (z, row_b) in biomes.iter().enumerate() {
+        for (x, biome_ref) in row_b.iter().enumerate() {
+            let biome = *biome_ref;
             let mut layer = 0i32;
             let mut in_solid = false;
             let mut surface_done = false;

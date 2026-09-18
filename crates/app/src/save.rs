@@ -1,7 +1,7 @@
 //! Persistencia: ajustes, mundos (delta de ediciones + estado del jugador).
 
 use anyhow::Result;
-use rivaren_gameplay::{Dimension, Gamemode, Inventory, Karma, Settings, WorldConfig};
+use rivaren_gameplay::{Dimension, Inventory, Karma, Settings, WorldConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -102,32 +102,3 @@ pub fn edits_to_map(edits: &[([i32; 3], u16)]) -> HashMap<[i32; 3], u16> {
     edits.iter().copied().collect()
 }
 
-pub fn default_save(seed: u64, config: &WorldConfig) -> SaveData {
-    SaveData {
-        version: 1,
-        seed,
-        config: config.clone(),
-        dimension: config.start_dimension,
-        time_of_day: 0.32,
-        player_pos: [0.0, 100.0, 0.0],
-        player_yaw: 0.0,
-        player_pitch: 0.0,
-        inventory: Inventory::default(),
-        karma: Karma::default(),
-        completed_quests: Vec::new(),
-        talked: Vec::new(),
-        edits: Vec::new(),
-        respawn_bed: None,
-        respawn_anchor: None,
-        respawn_origin: [0, 100, 0],
-    }
-}
-
-impl SaveData {
-    pub fn gamemode_label(&self) -> &'static str {
-        match self.config.gamemode {
-            Gamemode::Survival => "Supervivencia",
-            Gamemode::Creative => "Creativo",
-        }
-    }
-}

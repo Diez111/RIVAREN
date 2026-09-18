@@ -160,7 +160,6 @@ struct GpuChunk {
     vbuf: wgpu::Buffer,
     ibuf: wgpu::Buffer,
     index_count: u32,
-    vertex_count: u32,
     origin: Vec3,
 }
 
@@ -192,7 +191,6 @@ pub struct Renderer {
     globals_bgl: wgpu::BindGroupLayout,
     terrain_bgl: wgpu::BindGroupLayout,
     post_bgl: wgpu::BindGroupLayout,
-    chunk_bgl: wgpu::BindGroupLayout,
     // ── bind groups ──
     globals_bg: wgpu::BindGroup,
     terrain_bg: wgpu::BindGroup,
@@ -207,7 +205,6 @@ pub struct Renderer {
     post_buf: wgpu::Buffer,
     chunk_ubo: wgpu::Buffer,
     shadow_ubo: wgpu::Buffer,
-    shadow_slots: Vec<u32>,
     // ── texturas ──
     hdr_view: wgpu::TextureView,
     depth_view: wgpu::TextureView,
@@ -942,7 +939,6 @@ impl Renderer {
             globals_bgl,
             terrain_bgl,
             post_bgl,
-            chunk_bgl,
             globals_bg,
             terrain_bg,
             bright_bg,
@@ -955,7 +951,6 @@ impl Renderer {
             post_buf,
             chunk_ubo,
             shadow_ubo,
-            shadow_slots: Vec::with_capacity(MAX_CHUNKS),
             hdr_view,
             depth_view,
             ldr_views: [ldr_a.1, ldr_b.1],
@@ -987,7 +982,7 @@ impl Renderer {
 
     fn recreate_targets(&mut self) {
         let device = &self.ctx.device;
-        let scale = self.tier.render_scale().min(1.0).max(0.4);
+        let scale = self.tier.render_scale().clamp(0.4, 1.0);
         let rw = ((self.size.0 as f32 * scale) as u32).max(1);
         let rh = ((self.size.1 as f32 * scale) as u32).max(1);
         self.render_size = (rw, rh);
@@ -1187,7 +1182,6 @@ impl Renderer {
                 vbuf,
                 ibuf,
                 index_count: mesh.indices.len() as u32,
-                vertex_count: mesh.vertices.len() as u32,
                 origin: Vec3::new((key.x * 32) as f32, (key.y * 32) as f32, (key.z * 32) as f32),
             },
         );

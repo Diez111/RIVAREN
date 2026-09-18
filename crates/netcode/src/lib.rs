@@ -370,10 +370,7 @@ impl Client {
     pub fn poll(&mut self) -> Vec<ServerMsg> {
         let mut out = Vec::new();
         let mut buf = [0u8; MAX_PACKET];
-        loop {
-            let Ok((n, from)) = self.socket.recv_from(&mut buf) else {
-                break;
-            };
+        while let Ok((n, from)) = self.socket.recv_from(&mut buf) {
             if from != self.server {
                 continue;
             }

@@ -55,6 +55,7 @@ pub struct PackedVertex {
 impl PackedVertex {
     /// `ao`: 0..15, `sky`: 0..15 (luz de cielo horneada), `block`: 0..15.
     #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
     pub fn pack(x: u8, y: u8, z: u8, normal: u8, u: u8, v: u8, tex: u16, ao: u8, sky: u8, block: u8) -> Self {
         debug_assert!(x < 32 && y < 32 && z < 32 && normal < 6);
         let pos_packed = (x as u16) | ((y as u16) << 5) | ((z as u16) << 10) | ((normal as u16 & 7) << 15);
@@ -129,6 +130,7 @@ impl DrawList {
             clip: [0.0, 0.0, 100000.0, 100000.0],
         });
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn bordered(
         &mut self,
         x: f32,

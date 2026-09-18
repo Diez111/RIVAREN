@@ -157,11 +157,11 @@ fn leaf_aadf_exact(leaf: &[u16; 8]) -> AadfNode {
     // Reordena a [x-,x+,y-,y+,z-,z+]
     let faces = [faces[1], faces[0], faces[3], faces[2], faces[5], faces[4]];
     let mut corners = [2u8; 8];
-    for i in 0..8 {
+    for (i, c) in corners.iter_mut().enumerate() {
         let dx = (i & 1) as i32;
         let dz = ((i >> 1) & 1) as i32;
         let dy = ((i >> 2) & 1) as i32;
-        corners[i] = if solid_at(dx, dy, dz) { 0 } else { 1 };
+        *c = if solid_at(dx, dy, dz) { 0 } else { 1 };
     }
     AadfNode { faces, corners }
 }

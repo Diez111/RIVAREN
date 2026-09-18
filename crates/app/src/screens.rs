@@ -656,17 +656,35 @@ fn hud(app: &mut App, ui: &mut Ui) {
                     s.dimension, s.karma.compasion, s.karma.justicia, s.karma.sabiduria, s.edits.len()
                 ),
                 format!(
-                    "draws {} | quads {} | texts {}",
+                    "mobs {} | NPCs {} | {}",
+                    s.mobs.len(),
+                    s.npcs.len(),
+                    s.mobs
+                        .iter()
+                        .min_by(|a, b| {
+                            a.pos
+                                .distance(s.player.pos)
+                                .partial_cmp(&b.pos.distance(s.player.pos))
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                        .map(|m| format!("cerca: {}", m.species.name()))
+                        .unwrap_or_else(|| "sin mobs".into())
+                ),
+                format!(
+                    "draws {} | quads {} | textos {} | presupuesto {:.0} ms (CPU {:.0} / GPU {:.0})",
                     app.renderer.as_ref().map(|r| r.stats.draw_calls).unwrap_or(0),
                     app.renderer.as_ref().map(|r| r.stats.quads_ui).unwrap_or(0),
                     app.renderer.as_ref().map(|r| r.stats.texts_ui).unwrap_or(0),
+                    app.budget.frame_ms,
+                    app.budget.cpu_ms,
+                    app.budget.gpu_ms,
                 ),
             ]
         } else {
             Vec::new()
         },
     };
-    drop(s);
+    let _ = s;
 
     let r = screen_rect(ui);
     let scale = app.settings.game.hud_scale;
@@ -817,7 +835,6 @@ fn inventory(app: &mut App, ui: &mut Ui, table: bool) {
         return;
     };
     let inv = session_ref.inventory.clone();
-    drop(session_ref);
     let cols = if table { 3 } else { 2 };
     let cell = 46.0;
     let gap = 6.0;
@@ -880,8 +897,8 @@ fn inventory(app: &mut App, ui: &mut Ui, table: bool) {
     let result = try_craft(&grid_view, cols, cols, table, &rivaren_gameplay::recipe_book());
     let rview = result.as_ref().map(|(st, _)| slot_view(st));
     let rresp = ui.item_slot(4300, result_rect, rview.as_ref(), result.is_some());
-    if rresp.clicked && result.is_some() {
-        let (stack, slots) = result.unwrap();
+    if let Some((stack, slots)) = result {
+        if rresp.clicked {
         if let Some(sm) = app.session.as_mut() {
             sm.inventory.add(stack);
             for si in slots {
@@ -891,6 +908,7 @@ fn inventory(app: &mut App, ui: &mut Ui, table: bool) {
                 sm.crafted.push(stack.id);
             }
             sm.audio.play(rivaren_audio::Sfx::Craft, 0.8, 0.0);
+        }
         }
     }
     // Hotbar.
@@ -1067,7 +1085,7 @@ fn dialogue(app: &mut App, ui: &mut Ui) {
     let ai_pending = dlg.ai_pending;
     let history: Vec<(String, String)> = dlg.history.clone();
     let ai_mode = app.settings.game.ai_mode;
-    drop(session);
+    let _ = session;
 
     let card = Stack::centered_card(r, 700.0, 520.0);
     ui.panel(card);
