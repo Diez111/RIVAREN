@@ -85,20 +85,47 @@ pub fn generate_chunk(
                     world_sdf(seed, wx, wy, wz)
                 };
                 if sdf <= 0.0 {
-                    // Profundidad bajo superficie para capas.
-                    let depth = h - wy;
                     let biome = biomes[z][x];
-                    let block: BlockId = if depth < 1.0 {
-                        biome_surface_top(biome)
-                    } else if depth < 4.0 {
-                        2 // tierra ferral
-                    } else {
-                        4 // piedra cristal
-                    };
-                    b.voxels[ChunkBuilder::idx(x, y, z)] = block;
+                    let _ = (h, biome);
+                    // Capas finas se aplican después con un pase por columna
+                    // (el bloqueo del SDF no coincide 1:1 con la altura suave).
+                    b.voxels[ChunkBuilder::idx(x, y, z)] = 4; // piedra base
                 } else if wy < 62.0 && wy > 40.0 {
                     // Nivel del mar aproximado → agua (id 20).
                     b.voxels[ChunkBuilder::idx(x, y, z)] = 20;
+                }
+            }
+        }
+    }
+    // Estratos: solo la PRIMERA capa sólida desde arriba lleva hierba/tierra;
+    // los techos de cueva y estantes interiores quedan de piedra.
+    for z in 0..32 {
+        for x in 0..32 {
+            let biome = biomes[z][x];
+            let mut layer = 0i32;
+            let mut in_solid = false;
+            let mut surface_done = false;
+            for y in (0..32).rev() {
+                let v = b.voxels[ChunkBuilder::idx(x, y, z)];
+                if v == 4 {
+                    if !in_solid {
+                        in_solid = true;
+                        layer = 0;
+                    }
+                    if !surface_done {
+                        let block: BlockId = match layer {
+                            0 => biome_surface_top(biome),
+                            1..=3 => 2, // tierra ferral
+                            _ => 4,
+                        };
+                        b.voxels[ChunkBuilder::idx(x, y, z)] = block;
+                        layer += 1;
+                    }
+                } else if v == AIR || v == 20 {
+                    if in_solid {
+                        surface_done = true;
+                    }
+                    in_solid = false;
                 }
             }
         }

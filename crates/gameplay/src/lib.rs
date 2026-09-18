@@ -2,6 +2,35 @@
 //! muerte/respawn, aldeas con historia, crafteo, clima, portales.
 //! Todo original, sin nombres/assets de Minecraft.
 
+pub mod crafting;
+pub mod dialogue;
+pub mod items;
+pub mod quests;
+pub mod world_config;
+
+pub use crafting::{Recipe, RecipeKind, recipe_book, smelt, try_craft};
+pub use dialogue::{DialogueAction, DialogueNode, DialogueOption, DialogueTree, NpcMemory, tree_for};
+pub use items::{Inventory, ItemDef, ItemId, ItemStack, ToolKind, item_def, item_for_block, item_table};
+pub use quests::{Objective, ObjectiveCtx, Quest, QuestLog, QuestState};
+pub use world_config::{AudioSettings, Difficulty, GameSettings, Gamemode, GraphicsSettings, Settings, WorldConfig};
+
+/// Cicla el modo de juego (para botones de UI).
+pub fn gamemode_cycle(g: Gamemode) -> Gamemode {
+    match g {
+        Gamemode::Survival => Gamemode::Creative,
+        Gamemode::Creative => Gamemode::Survival,
+    }
+}
+
+/// Cicla la dificultad (para botones de UI).
+pub fn difficulty_label_cycle(d: Difficulty) -> Difficulty {
+    match d {
+        Difficulty::Peaceful => Difficulty::Normal,
+        Difficulty::Normal => Difficulty::Hard,
+        Difficulty::Hard => Difficulty::Peaceful,
+    }
+}
+
 use serde::{Deserialize, Serialize};
 
 /// Los tres ejes del karma. Rango -100..100 cada uno.
@@ -150,12 +179,6 @@ pub fn village_fragment(seed: u64, chunk_x: i32, chunk_z: i32) -> VillageFragmen
     }
 }
 
-/// Receta de crafteo original (datos en assets/data/recipes.json).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Recipe {
-    pub input: Vec<(String, u32)>,
-    pub output: (String, u32),
-}
 
 #[cfg(test)]
 mod tests {

@@ -1,10 +1,12 @@
 [package]
-name = "rivaren-gameplay"
+name = "rivaren-ai"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rivaren-core.workspace = true
-glam.workspace = true
+rivaren-gameplay.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+ureq.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

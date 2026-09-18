@@ -5,3 +5,6 @@ edition.workspace = true
 
 [dependencies]
 rivaren-core.workspace = true
+kira.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

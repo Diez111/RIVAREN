@@ -73,7 +73,21 @@ pub fn greedy_mesh(voxels: &[BlockId; 32768], out: &mut MeshData) {
     mesh_axis_y_binary(voxels, out);
     mesh_axis_x(voxels, out);
     mesh_axis_z(voxels, out);
-    emit_vertices(out);
+    emit_vertices(out, None);
+}
+
+/// Igual que `greedy_mesh` pero hornea luz por vóxel en los vértices.
+/// `light[idx]` empaqueta sky:4 | block:4. El vértice toma la luz del
+/// vóxel vecino en la dirección de la cara (el aire que ve la cara).
+pub fn greedy_mesh_lit(voxels: &[BlockId; 32768], light: &[u8; 32768], out: &mut MeshData) {
+    if let Some(()) = try_uniform_fast_path(voxels, out) {
+        return;
+    }
+    out.clear();
+    mesh_axis_y_binary(voxels, out);
+    mesh_axis_x(voxels, out);
+    mesh_axis_z(voxels, out);
+    emit_vertices(out, Some(light));
 }
 
 /// Fast path binario para el eje Y (dominante en terreno):
@@ -139,7 +153,7 @@ fn try_uniform_fast_path(voxels: &[BlockId; 32768], out: &mut MeshData) -> Optio
             block: first, x: 1, y: 1, z: 1, w: 30, h: 30, face: face as u8, ao: 3,
         });
     }
-    emit_vertices(out);
+    emit_vertices(out, None);
     Some(())
 }
 
@@ -320,7 +334,23 @@ fn greedy_merge_2d_z(grid: &[[Option<BlockId>; 32]; 32], z: u8, face: u8, out: &
     }
 }
 
-fn emit_vertices(out: &mut MeshData) {
+fn emit_vertices(out: &mut MeshData, light: Option<&[u8; 32768]>) {
+    #[inline]
+    fn neighbor_light(light: &[u8; 32768], x: i32, y: i32, z: i32, face: u8) -> (u8, u8) {
+        let (nx, ny, nz) = match face {
+            0 => (x + 1, y, z),
+            1 => (x - 1, y, z),
+            2 => (x, y + 1, z),
+            3 => (x, y - 1, z),
+            4 => (x, y, z + 1),
+            _ => (x, y, z - 1),
+        };
+        if nx < 0 || ny < 0 || nz < 0 || nx > 31 || ny > 31 || nz > 31 {
+            return (15, 0);
+        }
+        let v = light[(ny as usize * 32 + nz as usize) * 32 + nx as usize];
+        (v & 0xF, (v >> 4) & 0xF)
+    }
     for face in 0..6 {
         for q in out.quads[face].clone() {
             let base = out.vertices.len() as u32;
@@ -359,9 +389,13 @@ fn emit_vertices(out: &mut MeshData) {
                     2 => (q.w, q.h),
                     _ => (0, q.h),
                 };
+                let (sky, block) = match light {
+                    Some(l) => neighbor_light(l, q.x as i32, q.y as i32, q.z as i32, face as u8),
+                    None => (15, 0),
+                };
                 out.vertices.push(PackedVertex::pack(
                     ox.min(31), oy.min(31), oz.min(31),
-                    face as u8, u, v, q.block, q.ao, 15,
+                    face as u8, u, v, q.block, q.ao, sky, block,
                 ));
             }
             out.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);

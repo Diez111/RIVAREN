@@ -5,8 +5,10 @@
 
 pub mod greedy;
 pub mod incremental;
+pub mod light;
 pub mod lod;
 
-pub use greedy::{MeshData, Quad, compute_opaque_mask, greedy_mesh};
+pub use greedy::{MeshData, Quad, compute_opaque_mask, greedy_mesh, greedy_mesh_lit};
 pub use incremental::DirtySet;
+pub use light::bake_lighting;
 pub use lod::{LodLevel, downsample_2x, select_lod};

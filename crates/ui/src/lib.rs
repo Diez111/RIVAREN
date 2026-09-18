@@ -1,5 +1,16 @@
-//! `rivaren-ui`: HUD, inventario, brújula moral, mapa del alma.
-//! Render desacoplado (glyphon en Fase 4); aquí el modelo de datos + lógica.
+//! `rivaren-ui`: toolkit UI propio sobre wgpu (sin dependencias de terceros).
+//! Layout responsivo + widgets + tema; produce un `DrawList` que el renderer
+//! dibuja con quads instanciados (SDF) y texto (glyphon).
+
+pub mod input;
+pub mod layout;
+pub mod theme;
+pub mod widgets;
+
+pub use input::{InputState, Key};
+pub use layout::{Dir, Rect, Size, Stack};
+pub use theme::{Breakpoint, Palette, palette};
+pub use widgets::{Response, SlotView, Ui};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +23,11 @@ pub struct MoralCompass {
 impl MoralCompass {
     pub fn from_karma(k: &rivaren_gameplay::Karma) -> Self {
         let v = glam::Vec3::new(k.compasion, k.justicia, k.sabiduria);
-        let n = if v.length_squared() > 1e-6 { v.normalize() } else { glam::Vec3::Z };
+        let n = if v.length_squared() > 1e-6 {
+            v.normalize()
+        } else {
+            glam::Vec3::Z
+        };
         Self { dir: n.into() }
     }
 }
