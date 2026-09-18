@@ -1,0 +1,9 @@
+[package]
+name = "rivaren-meshing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true
+bytemuck.workspace = true
+glam.workspace = true

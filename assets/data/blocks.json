@@ -1,0 +1,10 @@
+[
+  {"id": 0, "name": "aire", "solid": false},
+  {"id": 1, "name": "hierba_ferral", "solid": true},
+  {"id": 2, "name": "tierra_ferral", "solid": true},
+  {"id": 4, "name": "piedra_cristal", "solid": true},
+  {"id": 6, "name": "arena_canto", "solid": true},
+  {"id": 20, "name": "agua_viva", "solid": false, "fluid": true},
+  {"id": 21, "name": "losa_plaza", "solid": true},
+  {"id": 30, "name": "marco_portal", "solid": true}
+]

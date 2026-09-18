@@ -1,0 +1,14 @@
+[package]
+name = "rivaren-render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true
+rivaren-meshing.workspace = true
+wgpu.workspace = true
+pollster.workspace = true
+glam.workspace = true
+bytemuck.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

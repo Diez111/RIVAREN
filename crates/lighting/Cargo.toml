@@ -1,0 +1,8 @@
+[package]
+name = "rivaren-lighting"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true
+glam.workspace = true

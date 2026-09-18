@@ -1,0 +1,26 @@
+# ── RIVAREN: configuración unificada multi-target ──
+# Un solo `cargo xtask build-all` compila para Linux/Mac/Windows con flags óptimos.
+[build]
+# Jobs paralelos = todos los hilos (por defecto = nº CPUs). No fijar a 0 (inválido).
+rustflags = ["-C", "target-cpu=x86-64-v2"]
+
+[target.x86_64-unknown-linux-gnu]
+linker = "cc"
+rustflags = ["-C", "target-cpu=x86-64-v2", "-C", "link-arg=-Wl,--as-needed"]
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+
+# macOS: solo se linkea en host mac; en Linux es solo check (sin linker cruzado).
+# Para binarios reales de Mac usar CI macos-latest (ver .github/workflows/ci.yml).
+[target.x86_64-apple-darwin]
+[target.aarch64-apple-darwin]
+
+# Android (Xiaomi 14C): requiere NDK. Se configura vía env ANDROID_NDK_HOME.
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android33-clang"
+rustflags = ["-C", "target-cpu=generic", "-C", "opt-level=s"]
+
+[term]
+verbose = false
+color = "auto"

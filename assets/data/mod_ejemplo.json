@@ -1,0 +1,15 @@
+{
+  "mod": "ejemplo_cristal",
+  "version": "0.1.0",
+  "blocks": [
+    {"id": "ejemplo_cristal:bloque_prisma", "name": "Bloque Prisma", "solid": true, "light": 7}
+  ],
+  "biomes": [
+    {"id": "ejemplo_cristal:vergel_prisma", "name": "Vergel Prisma"}
+  ],
+  "karma_axis": {
+    "id": "honor",
+    "name": "Honor",
+    "description": "Reputación en combate ritual (ejemplo de eje custom)."
+  }
+}

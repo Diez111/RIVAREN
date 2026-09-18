@@ -1,0 +1,11 @@
+[package]
+name = "rivaren-entities"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true
+glam.workspace = true
+hecs.workspace = true
+rayon.workspace = true
+serde.workspace = true

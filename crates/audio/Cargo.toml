@@ -1,0 +1,7 @@
+[package]
+name = "rivaren-audio"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true

@@ -1,0 +1,60 @@
+name: RIVAREN CI — Linux + Windows + Mac (compilación única)
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 0
+
+jobs:
+  check-all:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Check + tests (nativo del runner)
+        run: cargo test --workspace --all-targets
+      - name: Clippy estricto
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  cross-targets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu,x86_64-pc-windows-gnu,x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Check cruzado (los 4 targets sin linkear Mac)
+        run: |
+          cargo check -p rivaren-app --target x86_64-unknown-linux-gnu
+          cargo check -p rivaren-app --target x86_64-pc-windows-gnu
+          cargo check -p rivaren-app --target x86_64-apple-darwin || echo "(mac check requiere SDK: se verifica en macos-latest)"
+      - name: Compilador unificado xtask
+        run: cargo run -p xtask -- check-all || true
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build dist
+        run: cargo build -p rivaren-app --profile dist
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivaren-${{ matrix.os }}
+          path: target/dist/rivaren*

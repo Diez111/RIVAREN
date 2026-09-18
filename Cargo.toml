@@ -1,0 +1,110 @@
+[workspace]
+members = [
+  "crates/core",
+  "crates/world",
+  "crates/compression",
+  "crates/meshing",
+  "crates/render",
+  "crates/lighting",
+  "crates/entities",
+  "crates/physics",
+  "crates/gameplay",
+  "crates/netcode",
+  "crates/mods",
+  "crates/audio",
+  "crates/ui",
+  "crates/app",
+  "xtask",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["RIVAREN Team"]
+rust-version = "1.78"
+
+# ── Dependencias unificadas: una sola resolución para Linux/Mac/Windows ──
+[workspace.dependencies]
+glam = { version = "0.29", features = ["serde"] }
+wide = "0.7"
+rayon = "1.10"
+crossbeam = "0.8"
+flume = "0.11"
+serde = { version = "1", features = ["derive"] }
+bincode = "1.3"
+bytemuck = { version = "1", features = ["derive"] }
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wgpu = { version = "24", features = ["wgsl"] }
+winit = { version = "0.30", features = ["rwh_06"] }
+pollster = "1"
+hecs = "0.10"
+lz4_flex = "0.11"
+zstd = "0.13"
+ahash = "0.8"
+fastnoise-lite = "1.1"
+noise = "0.9"
+arrayvec = "0.7"
+bitflags = { version = "2", features = ["serde"] }
+smallvec = "1"
+parking_lot = "0.12"
+serde_json = "1"
+
+rivaren-core = { path = "crates/core" }
+rivaren-world = { path = "crates/world" }
+rivaren-compression = { path = "crates/compression" }
+rivaren-meshing = { path = "crates/meshing" }
+rivaren-render = { path = "crates/render" }
+rivaren-lighting = { path = "crates/lighting" }
+rivaren-entities = { path = "crates/entities" }
+rivaren-physics = { path = "crates/physics" }
+rivaren-gameplay = { path = "crates/gameplay" }
+rivaren-netcode = { path = "crates/netcode" }
+rivaren-mods = { path = "crates/mods" }
+rivaren-audio = { path = "crates/audio" }
+rivaren-ui = { path = "crates/ui" }
+
+# ── Perfiles de optimización ──
+# dev: iteración rápida. release: equilibrio. dist: máximo rendimiento (LTO fat).
+# mobile: tamaño + rendimiento Mali (opt-s). potato: compatibilidad máxima.
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+debug = false
+strip = "debuginfo"
+panic = "unwind"
+overflow-checks = false
+
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3
+
+[profile.mobile]
+inherits = "release"
+opt-level = "s"
+lto = "thin"
+codegen-units = 16
+strip = true
+panic = "unwind"
+
+[profile.potato]
+inherits = "release"
+opt-level = 2
+lto = "thin"
+codegen-units = 16
+debug = false
+strip = true

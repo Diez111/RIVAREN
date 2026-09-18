@@ -1,0 +1,9 @@
+[package]
+name = "rivaren-netcode"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true
+serde.workspace = true
+bincode.workspace = true

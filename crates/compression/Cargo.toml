@@ -1,0 +1,12 @@
+[package]
+name = "rivaren-compression"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true
+ahash.workspace = true
+lz4_flex.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+glam.workspace = true

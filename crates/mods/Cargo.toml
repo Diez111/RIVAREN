@@ -1,0 +1,14 @@
+[package]
+name = "rivaren-mods"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rivaren-core.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[features]
+default = []
+wasm = []
