@@ -46,8 +46,8 @@ pollster = "1"
 glyphon = "0.11"
 wgpu-ffx = "0.1"
 wgpu-ffx-shaders-spv = "0.1"
-kira = "0.12"
-ureq = { version = "3", features = ["json"] }
+kira = { version = "0.12", default-features = false, features = ["cpal", "symphonia", "wav", "pcm"] }
+ureq = { version = "3", default-features = false, features = ["json"] }
 hecs = "0.10"
 lz4_flex = "0.11"
 zstd = "0.13"

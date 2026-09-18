@@ -9,6 +9,7 @@ IA híbrida para NPCs, mods JSON y multijugador con rollback.
 ```bash
 cargo test --workspace                 # 30 suites verdes
 cargo run -p rivaren-app --release     # juego (ventana)
+cargo run -p rivaren-app --release -- --quickstart   # entra directo al mundo
 ```
 
 Controles: **WASD** mover, ratón mirar, **E** inventario, **C** mesa de crafteo,
