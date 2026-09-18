@@ -71,6 +71,13 @@ docs/adr/001..009
 `render-dev`, `ui-dev`, `ai-npc-dev`, `bench-guard`, `reviewer`) y comandos
 `/build-all`, `/bench`, `/screenshot`. Tras editar configuración, reiniciar opencode.
 
+## Licencia
+
+**GNU General Public License v3.0 o posterior** (GPL-3.0-or-later).
+Ver [LICENSE](LICENSE). Todo el contenido (código, lore, nombres, sonidos
+sintetizados) es original; las fuentes incluidas son libres (DejaVu, Bitstream
+Vera) y los shaders de upscale derivan de FidelityFX (MIT).
+
 ## Estado
 
 Implementado: G0–G8 (renderer completo), UI + pantallas, inventario/crafteo, quests,

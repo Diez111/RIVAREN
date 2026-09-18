@@ -1,0 +1,28 @@
+# Build
+/target/
+/dist/
+*.o
+*.rlib
+*.rmeta
+*.d
+incremental/
+
+# Capturas y temporales
+*.ppm
+*.png
+!assets/**/*.png
+*.log
+*.profraw
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.swp
+
+# Entorno
+.env
+*.key
+*.pem
+
+# Mods locales
+/mods-local/
