@@ -271,6 +271,15 @@ mod tests {
     #[test]
     fn chunk_math() {
         assert_eq!(chunk_of(IVec3::new(33, -1, 0)), IVec3::new(1, -1, 0));
-        assert_eq!(Fixed::from_f32(1.5).to_f32(), 1.5);
+    }
+
+    #[test]
+    fn fixed_roundtrip_is_exact_in_quarters() {
+        // Los valores con denominador potencia de 2 son exactos en I24F8;
+        // se comparan en el dominio entero para ser determinista en toda CPU.
+        assert_eq!(Fixed::from_f32(1.5).0, 384);
+        assert_eq!(Fixed::from_f32(-2.25).0, -576);
+        assert_eq!(Fixed::from_f32(0.0).0, 0);
+        assert!((Fixed::from_f32(1.5).to_f32() - 1.5).abs() < 1e-6);
     }
 }

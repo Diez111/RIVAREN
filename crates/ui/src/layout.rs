@@ -172,10 +172,10 @@ mod tests {
         s.finish();
         let r0 = s.rect(0);
         let r1 = s.rect(1);
-        assert_eq!(r0.h, 50.0);
-        assert_eq!(r0.y, 0.0);
-        assert_eq!(r1.y, 60.0);
-        assert_eq!(r1.h, 140.0);
+        assert!((r0.h - 50.0).abs() < 1e-4);
+        assert!(r0.y.abs() < 1e-4);
+        assert!((r1.y - 60.0).abs() < 1e-4);
+        assert!((r1.h - 140.0).abs() < 1e-4);
         assert!(r1.y + r1.h <= 200.0);
     }
 

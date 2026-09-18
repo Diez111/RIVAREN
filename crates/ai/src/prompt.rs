@@ -78,7 +78,7 @@ mod tests {
         };
         let p = build_system_prompt(&ctx);
         assert!(p.contains("RIVAREN"));
-        assert!(p.contains("compasión 50"));
+        assert!(p.contains("compasión 50") || p.contains("compasión 50."));
         assert!(p.contains("Río Roto"));
     }
 }
