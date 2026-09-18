@@ -110,7 +110,7 @@ impl AudioEngine {
         };
         let sound = base
             .clone()
-            .volume(Decibels(db as f32))
+            .volume(Decibels(db))
             .panning(pan.clamp(-1.0, 1.0));
         let _ = manager.play(sound);
     }
@@ -148,7 +148,7 @@ impl AudioEngine {
         } else {
             -80.0
         };
-        let sound = data.volume(Decibels(db as f32));
+        let sound = data.volume(Decibels(db));
         let _ = manager.play(sound);
         self.music_playing = true;
     }
@@ -258,7 +258,7 @@ fn synth_level_up() -> StaticSoundData {
     for (i, f) in [440.0f32, 554.0, 659.0].iter().enumerate() {
         let mut part = tone(*f, 0.12, |p| p.sin(), 14.0);
         let _ = i;
-        out.extend(part.drain(..));
+        out.append(&mut part);
     }
     frames_from(out)
 }

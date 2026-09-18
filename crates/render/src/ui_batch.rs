@@ -177,20 +177,6 @@ impl UiBatch {
         if n > 0 {
             queue.write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&instances[..n]));
         }
-        if std::env::var("RIVAREN_DEBUG").is_ok() {
-            use std::sync::atomic::{AtomicU64, Ordering};
-            static CTR: AtomicU64 = AtomicU64::new(0);
-            let c = CTR.fetch_add(1, Ordering::Relaxed);
-            if c % 240 == 0 {
-                eprintln!(
-                    "[ui] n={} target_size={:?} first={:?} second={:?}",
-                    n,
-                    size,
-                    instances.first().map(|i| i.rect),
-                    instances.get(1).map(|i| i.rect)
-                );
-            }
-        }
         let screen = [size.0 as f32, size.1 as f32, 1.0, 0.0];
         queue.write_buffer(&self.screen_buf, 0, bytemuck::cast_slice(&screen));
         self.viewport.update(

@@ -40,7 +40,7 @@ pub fn tick_mobs(world: &mut World, player: IVec3, frame: u64) -> usize {
             65..=128 => 10,
             _ => continue,
         };
-        if frame % rate as u64 == 0 {
+        if frame.is_multiple_of(rate as u64) {
             // IA mínima: deriva hacia el jugador si hostil (placeholder).
             let _ = mob;
             n += 1;

@@ -44,7 +44,7 @@ pub fn value_noise_3d(seed: Seed, x: f32, y: f32, z: f32) -> f32 {
 
 /// fBm con `octaves` capas. Frecuencia ×2.02 / amplitud ×0.5 por octava.
 #[inline(always)]
-pub fn fbm_3d(seed: Seed, mut x: f32, mut y: f32, mut z: f32, octaves: u32) -> f32 {
+pub fn fbm_3d(seed: Seed, mut x: f32, y: f32, mut z: f32, octaves: u32) -> f32 {
     let mut amp = 0.5f32;
     let mut freq = 1.0f32;
     let mut sum = 0.0f32;

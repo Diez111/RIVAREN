@@ -70,7 +70,7 @@ impl<'a> Ui<'a> {
             self.hot = Some(id);
         }
         let mut clicked = false;
-        let mut right_clicked = false;
+        let right_clicked = false;
         if hovered && self.input.mouse_pressed {
             self.active = Some(id);
         }
@@ -363,7 +363,7 @@ impl<'a> Ui<'a> {
             size,
             color,
         );
-        if focused && (self.frame / 30) % 2 == 0 {
+        if focused && (self.frame / 30).is_multiple_of(2) {
             // Cursor aproximado tras el texto.
             let w = buffer.chars().count() as f32 * size * 0.55;
             self.draw.rect(

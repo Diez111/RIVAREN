@@ -584,8 +584,8 @@ impl ApplicationHandler for App {
                     }
                     self.input.mouse_down = pressed;
                 }
-                MouseButton::Right => {
-                    if state == ElementState::Pressed {
+                MouseButton::Right
+                    if state == ElementState::Pressed => {
                         self.input.mouse_pressed = true;
                         // Colocar/interactuar.
                         if self.screen == Screen::Game {
@@ -596,7 +596,6 @@ impl ApplicationHandler for App {
                             }
                         }
                     }
-                }
                 _ => {}
             },
             WindowEvent::CursorMoved { position, .. } => {

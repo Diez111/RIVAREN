@@ -16,6 +16,7 @@ pub const PROTOCOL_VERSION: u16 = 1;
 pub const MAX_PACKET: usize = 1200;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Input {
     pub frame: u64,
     pub move_x: i8,
@@ -27,20 +28,6 @@ pub struct Input {
     pub pitch: i16,
 }
 
-impl Default for Input {
-    fn default() -> Self {
-        Self {
-            frame: 0,
-            move_x: 0,
-            move_z: 0,
-            jump: false,
-            sprint: false,
-            action: 0,
-            yaw: 0,
-            pitch: 0,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -209,9 +196,7 @@ impl Rollback {
     }
     pub fn snapshot_for(&self, frame: u64) -> Option<&Snapshot> {
         self.snaps
-            .iter()
-            .filter(|s| s.frame <= frame)
-            .next_back()
+            .iter().rfind(|s| s.frame <= frame)
     }
 }
 
@@ -369,7 +354,7 @@ impl Client {
     }
 
     pub fn send_input(&mut self, input: Input) -> std::io::Result<()> {
-        self.rollback.push_input(input.clone());
+        self.rollback.push_input(input);
         let bytes = self.conn.wrap(Payload::Client(ClientMsg::Input(input)));
         self.socket.send_to(&bytes, self.server).map(|_| ())
     }
@@ -417,7 +402,7 @@ impl Client {
 /// Usa fixed-point para reproducibilidad multiplataforma.
 pub fn simulate_player(pos: &mut [Fixed; 3], input: &Input, dt_ms: u32) {
     let speed = if input.sprint { 7 } else { 4 };
-    let step = (speed as i32 * dt_ms as i32) / 50; // bloques por tick
+    let step = (speed * dt_ms as i32) / 50; // bloques por tick
     *pos = [
         Fixed(pos[0].0 + input.move_x as i32 * step * Fixed::SCALE / 32),
         pos[1],

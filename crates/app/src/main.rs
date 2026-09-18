@@ -32,6 +32,36 @@ fn main() -> Result<()> {
         let path = args.get(i + 1).cloned().unwrap_or_else(|| "/tmp/rivaren_game.ppm".into());
         return run_screenshot_ingame(seed, &path);
     }
+    if args.iter().any(|a| a == "--heights") {
+        let mut above = 0;
+        let mut below = 0;
+        let mut min = f32::MAX;
+        let mut max = f32::MIN;
+        let mut sum = 0.0;
+        let mut n = 0;
+        for dz in -20..20 {
+            for dx in -20..20 {
+                let x = dx as f32 * 64.0;
+                let z = dz as f32 * 64.0;
+                let h = rivaren_world::sdf::surface_height(seed, x, z);
+                min = min.min(h);
+                max = max.max(h);
+                sum += h;
+                n += 1;
+                if h > 62.0 {
+                    above += 1;
+                } else {
+                    below += 1;
+                }
+            }
+        }
+        println!(
+            "heights seed={seed}: min={min:.0} max={max:.0} media={:.0} tierra={above} agua={below}",
+            sum / n as f32
+        );
+        return Ok(());
+    }
+
     if args.iter().any(|a| a == "--headless") {
         return run_headless_demo(seed);
     }
@@ -229,9 +259,34 @@ fn run_screenshot_ingame(seed: u64, path: &str) -> Result<()> {
         render_scale: 1.0,
         fog_density: 1.0,
     };
+    // Spawnea algunos mobs para la captura.
+    for _ in 0..14 {
+        session.try_spawn_mob(match session.next_mob_id % 4 {
+            0 => crate::game::MobSpecies::Uro,
+            1 => crate::game::MobSpecies::Jabali,
+            2 => crate::game::MobSpecies::ZorroBruma,
+            _ => crate::game::MobSpecies::Uro,
+        });
+    }
+    for _ in 0..30 {
+        session.tick_mobs(1.0 / 20.0);
+    }
+    let mut entities: Vec<rivaren_render::EntityInstance> = Vec::new();
+    for mob in &session.mobs {
+        let size = mob.species.size();
+        entities.push(rivaren_render::EntityInstance {
+            pos: [mob.pos.x, mob.pos.y + size[1] * 0.5, mob.pos.z],
+            _pad0: 0.0,
+            size,
+            _pad1: 0.0,
+            color: mob.species.color(),
+        });
+    }
+    renderer.set_entities(&entities);
     for _ in 0..6 {
         renderer.render(&scene, &app_draw)?;
     }
+    println!("  mobs: {} entidades", entities.len());
     renderer.capture_ppm(path)?;
     println!(
         "screenshot ingame: {path} | chunks={} draws={} quads_ui={}",
@@ -270,7 +325,7 @@ fn run_headless_demo(seed: u64) -> Result<()> {
         let dag = svdag.build(&b.voxels);
         let dag_us = t3.elapsed().as_micros();
         let t4 = Instant::now();
-        let aadf = build_aadf(&dag);
+        let _aadf = build_aadf(&dag);
         let aadf_us = t4.elapsed().as_micros();
         let mut pool = BrickPool::new();
         let _ = pool.intern_chunk(&b.voxels);

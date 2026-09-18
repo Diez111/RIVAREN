@@ -12,28 +12,28 @@ pub fn surface_height(seed: Seed, x: f32, z: f32) -> f32 {
     let cont = fbm_3d(seed ^ 0xC071, x / 2048.0, 0.0, z / 2048.0, 3);
     // Erosión: suaviza o recorta.
     let eros = fbm_3d(seed ^ 0xE20510, x / 512.0, 7.3, z / 512.0, 3);
-    // Picos y valles.
-    let pv = fbm_3d(seed ^ 0x9EA5, x / 256.0, 13.7, z / 256.0, 4).abs() * 2.0 - 0.5;
+    // Picos y valles centrados en 0 (la base domina la altura media).
+    let pv = fbm_3d(seed ^ 0x9EA5, x / 256.0, 13.7, z / 256.0, 4).abs() * 2.0 - 1.0;
     // Spline continental: océano profundo → costa → llanura → meseta → montaña.
     let base = spline_continental(cont);
     // Erosión modula amplitud de picos: erosión alta = terreno suave.
-    let amp = 96.0 * (1.0 - eros * 0.45) + 8.0;
-    base + pv * amp + eros * 24.0
+    let amp = 52.0 * (1.0 - eros * 0.45) + 8.0;
+    base + 86.0 + pv * amp + eros * 18.0
 }
 
 #[inline(always)]
 fn spline_continental(c: f32) -> f32 {
-    // c en [-1,1] → altura base
+    // c en [-1,1] → altura base. El nivel del mar es 62.
     if c < -0.55 {
-        -48.0 + (c + 1.0) * 30.0 // fosa abisal
+        -52.0 + (c + 1.0) * 44.0 // fosa abisal: -52..-32
     } else if c < -0.25 {
-        -28.0 + (c + 0.55) * 66.0 // océano → costa
+        -32.0 + (c + 0.55) * 90.0 // océano: -32..-5
     } else if c < 0.2 {
-        -8.0 + (c + 0.25) * 80.0 // llanura
+        -5.0 + (c + 0.25) * 190.0 // costa → llanura: -5..80
     } else if c < 0.6 {
-        28.0 + (c - 0.2) * 120.0 // colinas → meseta
+        80.0 + (c - 0.2) * 150.0 // colinas → meseta: 80..140
     } else {
-        76.0 + (c - 0.6) * 220.0 // montañas
+        140.0 + (c - 0.6) * 260.0 // montañas: 140..244
     }
 }
 

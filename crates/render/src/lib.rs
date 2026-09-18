@@ -16,7 +16,7 @@ pub use camera::{Camera, aabb_in_frustum, sphere_in_frustum};
 pub const GPU_BACKEND_NAME: &str = "wgpu29";
 pub use device::GpuContext;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
 use glam::{IVec3, Mat4, Vec3, Vec4};
 use std::collections::HashMap;
@@ -61,6 +61,20 @@ struct PostParams {
     sharpen: f32,
     _pad: f32,
     _pad2: f32,
+}
+
+/// Instancia de entidad (caja) para el pase de entidades.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug)]
+pub struct EntityInstance {
+    /// Centro en el mundo.
+    pub pos: [f32; 3],
+    pub _pad0: f32,
+    /// Tamaño de la caja (ancho, alto, fondo).
+    pub size: [f32; 3],
+    pub _pad1: f32,
+    /// Color RGB + alpha.
+    pub color: [f32; 4],
 }
 
 #[repr(C)]
@@ -169,6 +183,11 @@ pub struct Renderer {
     blur_v_pipe: wgpu::RenderPipeline,
     tonemap_pipe: wgpu::RenderPipeline,
     upscale_pipe: wgpu::RenderPipeline,
+    entity_pipe: wgpu::RenderPipeline,
+    entity_buf: wgpu::Buffer,
+    entity_cube: wgpu::Buffer,
+    entity_capacity: usize,
+    entity_count: u32,
     // ── layouts ──
     globals_bgl: wgpu::BindGroupLayout,
     terrain_bgl: wgpu::BindGroupLayout,
@@ -229,7 +248,7 @@ impl Renderer {
         let device = &ctx.device;
 
         // ── texturas ──
-        let (hdr_tex, hdr_view) = create_tex(
+        let (_hdr_tex, hdr_view) = create_tex(
             device,
             size,
             wgpu::TextureFormat::Rgba16Float,
@@ -620,7 +639,7 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &terrain_shader,
                 entry_point: Some("vs_main"),
-                buffers: &[vertex_layout.clone()],
+                buffers: std::slice::from_ref(&vertex_layout),
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -652,7 +671,7 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &water_shader,
                 entry_point: Some("vs_main"),
-                buffers: &[vertex_layout.clone()],
+                buffers: std::slice::from_ref(&vertex_layout),
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -714,7 +733,7 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &shadow_shader,
                 entry_point: Some("vs_main"),
-                buffers: &[vertex_layout.clone()],
+                buffers: std::slice::from_ref(&vertex_layout),
                 compilation_options: Default::default(),
             },
             fragment: None,
@@ -768,15 +787,15 @@ impl Renderer {
             blend: None,
             write_mask: wgpu::ColorWrites::ALL,
         });
-        let bright_pipe = make_post_pipe("bright", "fs_bright", &[bloom_target.clone()]);
-        let blur_h_pipe = make_post_pipe("blur-h", "fs_blur", &[bloom_target.clone()]);
-        let blur_v_pipe = make_post_pipe("blur-v", "fs_blur_v", &[bloom_target.clone()]);
+        let bright_pipe = make_post_pipe("bright", "fs_bright", std::slice::from_ref(&bloom_target));
+        let blur_h_pipe = make_post_pipe("blur-h", "fs_blur", std::slice::from_ref(&bloom_target));
+        let blur_v_pipe = make_post_pipe("blur-v", "fs_blur_v", std::slice::from_ref(&bloom_target));
         let ldr_target = Some(wgpu::ColorTargetState {
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             blend: None,
             write_mask: wgpu::ColorWrites::ALL,
         });
-        let tonemap_pipe = make_post_pipe("tonemap", "fs_tonemap", &[ldr_target.clone()]);
+        let tonemap_pipe = make_post_pipe("tonemap", "fs_tonemap", std::slice::from_ref(&ldr_target));
         let upscale_pipe = make_post_pipe(
             "upscale",
             "fs_upscale",
@@ -786,6 +805,111 @@ impl Renderer {
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         );
+
+        // ── Entidades (cajas instanciadas) ──
+        let entity_shader = shader(device, "entity", include_str!("../../../assets/shaders/entity.wgsl"));
+        let entity_pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("entity"),
+            layout: Some(&globals_layout),
+            vertex: wgpu::VertexState {
+                module: &entity_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[
+                    wgpu::VertexBufferLayout {
+                        array_stride: 12,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &[wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x3,
+                            offset: 0,
+                            shader_location: 0,
+                        }],
+                    },
+                    wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<EntityInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &[
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x3,
+                                offset: 0,
+                                shader_location: 1,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x3,
+                                offset: 16,
+                                shader_location: 2,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x4,
+                                offset: 32,
+                                shader_location: 3,
+                            },
+                        ],
+                    },
+                ],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &entity_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                cull_mode: Some(wgpu::Face::Back),
+                front_face: wgpu::FrontFace::Ccw,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        let entity_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("entities"),
+            size: (4096 * std::mem::size_of::<EntityInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        // Cubo unitario (36 vértices, 12 triángulos).
+        const CUBE: [[f32; 3]; 36] = [
+            // +X
+            [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5],
+            [0.5, -0.5, -0.5], [0.5, 0.5, 0.5], [0.5, -0.5, 0.5],
+            // -X
+            [-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, 0.5, -0.5],
+            [-0.5, -0.5, 0.5], [-0.5, 0.5, -0.5], [-0.5, -0.5, -0.5],
+            // +Y
+            [-0.5, 0.5, -0.5], [-0.5, 0.5, 0.5], [0.5, 0.5, 0.5],
+            [-0.5, 0.5, -0.5], [0.5, 0.5, 0.5], [0.5, 0.5, -0.5],
+            // -Y
+            [-0.5, -0.5, 0.5], [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5],
+            [-0.5, -0.5, 0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5],
+            // +Z
+            [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5],
+            [-0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
+            // -Z
+            [0.5, -0.5, -0.5], [-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5],
+            [0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5],
+        ];
+        let entity_cube = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("entity-cube"),
+            size: std::mem::size_of_val(&CUBE) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        ctx.queue.write_buffer(&entity_cube, 0, bytemuck::cast_slice(&CUBE));
+        let _ = &entity_shader;
 
         let ui = ui_batch::UiBatch::new(device, &ctx.queue, ctx.format);
         // Target offscreen para modo headless (tests/CI).
@@ -810,6 +934,11 @@ impl Renderer {
             blur_v_pipe,
             tonemap_pipe,
             upscale_pipe,
+            entity_pipe,
+            entity_buf,
+            entity_cube,
+            entity_capacity: 4096,
+            entity_count: 0,
             globals_bgl,
             terrain_bgl,
             post_bgl,
@@ -950,6 +1079,17 @@ impl Renderer {
         let _ = &self.post_bgl;
     }
 
+    /// Sube las instancias de entidades del frame (una sola escritura).
+    pub fn set_entities(&mut self, entities: &[EntityInstance]) {
+        let n = entities.len().min(self.entity_capacity);
+        self.entity_count = n as u32;
+        if n > 0 {
+            self.ctx
+                .queue
+                .write_buffer(&self.entity_buf, 0, bytemuck::cast_slice(&entities[..n]));
+        }
+    }
+
     /// Captura el buffer offscreen a un PPM (solo modo headless, para tests).
     pub fn capture_ppm(&self, path: &str) -> Result<()> {
         let (w, h) = self.size;
@@ -1083,13 +1223,13 @@ impl Renderer {
                     return Ok(FrameResult::Skip);
                 }
                 wgpu::CurrentSurfaceTexture::Timeout => {
-                    if std::env::var("RIVAREN_DEBUG").is_ok() && self.frame % 120 == 0 {
+                    if std::env::var("RIVAREN_DEBUG").is_ok() && self.frame.is_multiple_of(120) {
                         tracing::info!("surface Timeout");
                     }
                     return Ok(FrameResult::Skip);
                 }
                 wgpu::CurrentSurfaceTexture::Occluded => {
-                    if std::env::var("RIVAREN_DEBUG").is_ok() && self.frame % 120 == 0 {
+                    if std::env::var("RIVAREN_DEBUG").is_ok() && self.frame.is_multiple_of(120) {
                         tracing::info!("surface Occluded");
                     }
                     return Ok(FrameResult::Skip);
@@ -1317,8 +1457,18 @@ impl Renderer {
                     self.stats.draw_calls += 1;
                 }
             }
+            // Entidades (cajas animadas).
+            if self.entity_count > 0 {
+                pass.set_pipeline(&self.entity_pipe);
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+                pass.set_vertex_buffer(0, self.entity_cube.slice(..));
+                pass.set_vertex_buffer(1, self.entity_buf.slice(..));
+                pass.draw(0..36, 0..self.entity_count);
+                self.stats.draw_calls += 1;
+            }
             // Agua (reusa los mismos meshes, clip de no-agua en el shader).
             pass.set_pipeline(&self.water_pipe);
+            pass.set_bind_group(0, &self.terrain_bg, &[]);
             let mut last_vbuf: Option<*const wgpu::Buffer> = None;
             for (key, slot) in &terrain_slots {
                 if let Some(chunk) = self.chunks.get(key) {
@@ -1577,7 +1727,7 @@ fn srgb(v: f32) -> f32 {
 }
 
 fn align_up(v: u64, align: u64) -> u64 {
-    (v + align - 1) / align * align
+    v.div_ceil(align) * align
 }
 
 fn push_chunk_info(data: &mut Vec<u8>, info: &ChunkInfo, stride: u64) {

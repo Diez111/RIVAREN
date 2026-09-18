@@ -1,7 +1,7 @@
 //! Todas las pantallas del juego dibujadas con el toolkit UI propio.
 //! Responsive: se adapta a móvil/tablet/desktop sin desbordar.
 
-use crate::app::{Action, App, Screen};
+use crate::app::{App, Screen};
 use crate::save;
 use rivaren_gameplay::{
     difficulty_label_cycle, gamemode_cycle, item_def, try_craft, Objective, QuestState,
@@ -108,15 +108,6 @@ fn background(ui: &mut Ui) {
 
 fn main_menu(app: &mut App, ui: &mut Ui) {
     background(ui);
-    // Diagnóstico temporal: marca de frame.
-    if std::env::var("RIVAREN_DIAG").is_ok() {
-        // Aísla el pipeline de quads: 3 rectángulos grandes.
-        ui.draw.rect(40.0, 100.0, 400.0, 200.0, [1.0, 0.0, 0.0, 1.0]);
-        ui.draw.rect(500.0, 100.0, 400.0, 200.0, [0.0, 1.0, 0.0, 1.0]);
-        ui.draw.rect(40.0, 350.0, 400.0, 200.0, [0.0, 0.4, 1.0, 1.0]);
-        ui.draw.text(format!("f{}", app.frame), 40.0, 570.0, 28.0, [1.0, 1.0, 1.0, 1.0]);
-        return;
-    }
     let r = screen_rect(ui);
     let card = Stack::centered_card(r, 460.0, 560.0);
     ui.draw.text_centered(
@@ -138,7 +129,7 @@ fn main_menu(app: &mut App, ui: &mut Ui) {
         Dir::Column,
         12.0,
     );
-    let b = |col: &mut Stack, ui: &mut Ui, app: &mut App, id: u64, label: &str, primary: bool| -> bool {
+    let b = |col: &mut Stack, ui: &mut Ui, _app: &mut App, id: u64, label: &str, primary: bool| -> bool {
         let rect = col.next(Size::Fixed(ui.breakpoint.touch_target().max(40.0)));
         if primary {
             ui.button_primary(id, rect, label).clicked
@@ -1148,7 +1139,7 @@ fn dialogue(app: &mut App, ui: &mut Ui) {
         let input_rect = Rect::new(card.x + SPACE, card.y + card.h - 52.0, card.w - 220.0, 36.0);
         let buf = app.text_buffers.entry(7000).or_default();
         let mut text = buf.clone();
-        let field = ui.text_field(7000, input_rect, &mut text, "Pregunta libre al NPC...");
+        let _field = ui.text_field(7000, input_rect, &mut text, "Pregunta libre al NPC...");
         *buf = text.clone();
         if let Some(session) = app.session.as_mut() {
             if let Some(d) = session.dialogue.as_mut() {

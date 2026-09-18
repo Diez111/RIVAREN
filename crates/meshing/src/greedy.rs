@@ -66,7 +66,7 @@ pub fn greedy_mesh(voxels: &[BlockId; 32768], out: &mut MeshData) {
     // Fast path: si el chunk es homogéneo (1-2 valores), emite directo.
     // Caso común en terreno: gran masa sólida + aire → 6 quads sin escaneo 3-axis.
     if let Some(quads) = try_uniform_fast_path(voxels, out) {
-        let _ = quads;
+        quads;
         return;
     }
     out.clear();

@@ -9,7 +9,9 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+wasmtime = { version = "27", optional = true }
 
 [features]
 default = []
-wasm = []
+# Habilita wasmtime para comportamientos sandbox (compilación pesada).
+wasm = ["dep:wasmtime"]

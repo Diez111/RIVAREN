@@ -242,3 +242,65 @@ mod tests {
         assert_ne!(mod_block_color(200), mod_block_color(201));
     }
 }
+
+// ── Sandbox WASM (feature `wasm`) ────────────────────────────────────
+//
+// Un mod WASM exporta `init(api_ptr: u32, api_len: u32) -> u32` y usa la API
+// del host para registrar bloques/comportamientos. El host expone funciones
+// con límites de memoria y tiempo (1 ms por llamada).
+#[cfg(feature = "wasm")]
+pub mod wasm {
+    use anyhow::{Context, Result};
+    use wasmtime::{Config, Engine, Instance, Module, Store, TypedFunc};
+
+    pub struct WasmMod {
+        store: Store<()>,
+        instance: Instance,
+        pub memory: wasmtime::Memory,
+    }
+
+    impl WasmMod {
+        pub fn load(bytes: &[u8]) -> Result<Self> {
+            let mut config = Config::new();
+            config.epoch_interruption(true);
+            config.wasm_backtrace(false);
+            let engine = Engine::new(&config)?;
+            let module = Module::new(&engine, bytes).context("wasm inválido")?;
+            let mut store = Store::new(&engine, ());
+            // Límite de épocas: 1 ms aprox (el host incrementa la época).
+            store.set_epoch_deadline(1);
+            let instance = Instance::new(&mut store, &module, &[])?;
+            let memory = match instance.get_memory(&mut store, "memory") {
+                Some(m) => m,
+                None => wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, Some(16)))?,
+            };
+            Ok(Self {
+                store,
+                instance,
+                memory,
+            })
+        }
+
+        pub fn call_i32(&mut self, name: &str, arg: i32) -> Result<i32> {
+            let f: TypedFunc<i32, i32> = self
+                .instance
+                .get_typed_func(&mut self.store, name)
+                .with_context(|| format!("export {name} no encontrado"))?;
+            Ok(f.call(&mut self.store, arg)?)
+        }
+    }
+}
+
+#[cfg(not(feature = "wasm"))]
+pub mod wasm {
+    use anyhow::Result;
+
+    /// Placeholder cuando la feature `wasm` está desactivada.
+    pub struct WasmMod;
+
+    impl WasmMod {
+        pub fn load(_bytes: &[u8]) -> Result<Self> {
+            anyhow::bail!("compila con --features wasm para habilitar mods WASM")
+        }
+    }
+}

@@ -189,16 +189,14 @@ impl Inventory {
         }
         let max = item_def(stack.id).stack_max.max(1);
         // Primero completa stacks existentes (hotbar + principal).
-        for s in self.slots.iter_mut().take(36) {
-            if let Some(existing) = s {
-                if existing.id == stack.id && existing.count < max {
-                    let space = max - existing.count;
-                    let take = space.min(stack.count);
-                    existing.count += take;
-                    stack.count -= take;
-                    if stack.count == 0 {
-                        return None;
-                    }
+        for existing in self.slots.iter_mut().take(36).flatten() {
+            if existing.id == stack.id && existing.count < max {
+                let space = max - existing.count;
+                let take = space.min(stack.count);
+                existing.count += take;
+                stack.count -= take;
+                if stack.count == 0 {
+                    return None;
                 }
             }
         }

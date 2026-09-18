@@ -20,7 +20,7 @@ impl GpuContext {
     pub async fn new(
         window: Option<Arc<winit::window::Window>>,
         size: (u32, u32),
-        for_present: bool,
+        _for_present: bool,
     ) -> Result<Self> {
         let mut iid = wgpu::InstanceDescriptor::new_without_display_handle();
         iid.backends = wgpu::Backends::all();

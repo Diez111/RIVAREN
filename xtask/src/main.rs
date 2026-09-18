@@ -35,12 +35,16 @@ fn main() -> Result<()> {
         "check-all" => check_all(),
         "bench" => bench(),
         "package" => package(),
+        "apk" => apk(),
+        "doctor" => doctor(),
         _ => {
             println!("RIVAREN xtask — compilador unificado");
             println!("  cargo xtask build-all [--release|--dist|--mobile]");
             println!("  cargo xtask check-all");
             println!("  cargo xtask bench");
             println!("  cargo xtask package");
+            println!("  cargo xtask apk       # APK Android (requiere NDK)");
+            println!("  cargo xtask doctor    # comprueba toolchains");
             Ok(())
         }
     }
@@ -131,6 +135,48 @@ fn bench() -> Result<()> {
         .status()?;
     if !st.success() {
         anyhow::bail!("bench/tests fallaron");
+    }
+    Ok(())
+}
+
+/// Empaqueta un APK para Android (requiere Android SDK/NDK + cargo-ndk).
+fn apk() -> Result<()> {
+    let ndk = std::env::var("ANDROID_NDK_HOME").ok();
+    if ndk.is_none() {
+        anyhow::bail!(
+            "ANDROID_NDK_HOME no definido. Instala el NDK y exporta la variable.\n             Pasos:\n             1) rustup target add aarch64-linux-android\n             2) cargo install cargo-ndk\n             3) export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/<version>\n             4) cargo xtask apk"
+        );
+    }
+    let st = Command::new("cargo")
+        .arg("ndk")
+        .args(["-t", "arm64-v8a", "-o", "target/android", "build"])
+        .arg("-p")
+        .arg("rivaren-app")
+        .arg("--release")
+        .status();
+    match st {
+        Ok(s) if s.success() => {
+            println!("✓ lib rivaren.so en target/android/arm64-v8a");
+            println!("  Empaqueta con `cargo apk build` o Gradle usando el .so generado.");
+            Ok(())
+        }
+        Ok(_) => anyhow::bail!("cargo ndk falló"),
+        Err(e) => anyhow::bail!("cargo ndk no instalado: {e}"),
+    }
+}
+
+fn doctor() -> Result<()> {
+    println!("◆ doctor: toolchains y targets");
+    let out = Command::new("rustup").args(["target", "list", "--installed"]).output()?;
+    println!("targets instalados:\n{}", String::from_utf8_lossy(&out.stdout));
+    for (name, var) in [
+        ("Android NDK", "ANDROID_NDK_HOME"),
+        ("macOS SDK (cross)", "SDKROOT"),
+    ] {
+        println!(
+            "{name}: {}",
+            std::env::var(var).unwrap_or_else(|_| "(no definido)".into())
+        );
     }
     Ok(())
 }

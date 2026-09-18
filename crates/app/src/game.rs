@@ -1,7 +1,7 @@
 //! Sesión de juego: streaming de chunks, jugador, interacción, NPCs, IA, audio.
 
 use glam::{IVec3, Vec3};
-use rivaren_ai::{AiEvent, AiService, ChatMessage};
+use rivaren_ai::{AiEvent, AiService};
 use rivaren_audio::{AudioEngine, Sfx, Soundscape};
 use rivaren_core::{AIR, CHUNK_VOLUME, hash3};
 use rivaren_gameplay::{
@@ -68,6 +68,60 @@ pub struct ChunkData {
     pub voxels: Box<[u16; CHUNK_VOLUME]>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MobSpecies {
+    Uro,        // pasivo, lana
+    Jabali,
+    ZorroBruma,
+    Acechador,  // hostil de noche
+    PenitenteErrante,
+}
+
+impl MobSpecies {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Uro => "Uro lanudo",
+            Self::Jabali => "Jabalí moteado",
+            Self::ZorroBruma => "Zorro de bruma",
+            Self::Acechador => "Acechador",
+            Self::PenitenteErrante => "Penitente errante",
+        }
+    }
+    pub fn color(&self) -> [f32; 4] {
+        match self {
+            Self::Uro => [0.85, 0.82, 0.78, 1.0],
+            Self::Jabali => [0.55, 0.40, 0.30, 1.0],
+            Self::ZorroBruma => [0.75, 0.55, 0.40, 1.0],
+            Self::Acechador => [0.25, 0.10, 0.30, 1.0],
+            Self::PenitenteErrante => [0.80, 0.30, 0.25, 1.0],
+        }
+    }
+    pub fn size(&self) -> [f32; 3] {
+        match self {
+            Self::Uro => [0.9, 1.3, 1.6],
+            Self::Jabali => [0.8, 0.9, 1.2],
+            Self::ZorroBruma => [0.6, 0.7, 1.0],
+            Self::Acechador => [0.8, 1.8, 0.8],
+            Self::PenitenteErrante => [0.7, 1.8, 0.7],
+        }
+    }
+    pub fn hostile(&self) -> bool {
+        matches!(self, Self::Acechador)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MobEntity {
+    pub species: MobSpecies,
+    pub pos: Vec3,
+    pub vel: Vec3,
+    pub yaw: f32,
+    pub health: f32,
+    pub wander_timer: f32,
+    pub on_ground: bool,
+    pub id: u32,
+}
+
 pub struct NpcEntity {
     pub kind: &'static str,
     pub pos: Vec3,
@@ -110,6 +164,9 @@ pub struct GameSession {
     gen_rx: flume::Receiver<(IVec3, Box<[u16; CHUNK_VOLUME]>, MeshData)>,
     pending: HashSet<IVec3>,
     pub npcs: Vec<NpcEntity>,
+    pub mobs: Vec<MobEntity>,
+    pub next_mob_id: u32,
+    mob_spawn_timer: f32,
     pub dialogue: Option<DialogueSession>,
     pub ai: AiService,
     pub audio: AudioEngine,
@@ -127,6 +184,7 @@ pub struct GameSession {
     pub step_timer: f32,
     pub fall_start: f32,
     pub pulso_accum: f32,
+    pub tick_count: u64,
 }
 
 impl GameSession {
@@ -201,6 +259,9 @@ impl GameSession {
             gen_rx,
             pending: HashSet::new(),
             npcs: Vec::new(),
+            mobs: Vec::new(),
+            next_mob_id: 1,
+            mob_spawn_timer: 2.0,
             dialogue: None,
             ai,
             audio,
@@ -222,6 +283,7 @@ impl GameSession {
             step_timer: 0.0,
             fall_start: 0.0,
             pulso_accum: 0.0,
+            tick_count: 0,
         }
     }
 
@@ -866,7 +928,7 @@ impl GameSession {
 
     pub fn damage_player(&mut self, amount: f32, cause: &str) {
         let _ = amount;
-        self.message = Some((format!("{cause}"), 3.0));
+        self.message = Some((cause.to_string(), 3.0));
         self.audio.play(Sfx::Hurt, 0.8, 0.0);
     }
 
@@ -1052,7 +1114,228 @@ impl GameSession {
 
     // ── Tick global ──────────────────────────────────────────────
 
+    /// IA de mobs: deambulan, caen y huyen/atacan (hostiles).
+    pub fn tick_mobs(&mut self, dt: f32) {
+        let player = self.player.pos;
+        let player_eye = self.player.eye();
+        let tick_count = self.tick_count;
+        let time = self.time_of_day;
+        let mut hits = 0.0f32;
+        let mut despawn = Vec::new();
+        // Snapshot local (caja de 96³ alrededor del jugador) para colisión sin préstamos.
+        let cx = player.x.floor() as i32;
+        let cy = player.y.floor() as i32;
+        let cz = player.z.floor() as i32;
+        let mut solid_map: HashSet<(i32, i32, i32)> = HashSet::new();
+        let r = 48;
+        for y in (cy - r..=cy + r).step_by(2) {
+            for z in (cz - r..=cz + r).step_by(2) {
+                for x in (cx - r..=cx + r).step_by(2) {
+                    let b = self.block_at(x, y, z);
+                    if b != 0 && b != 20 {
+                        solid_map.insert((x, y, z));
+                    }
+                }
+            }
+        }
+        let solid = |gx: i32, gy: i32, gz: i32| -> bool { solid_map.contains(&(gx, gy, gz)) };
+        for (i, mob) in self.mobs.iter_mut().enumerate() {
+            let d = mob.pos.distance(player);
+            if d > 128.0 {
+                despawn.push(i);
+                continue;
+            }
+            // Tick amortizado por distancia.
+            let rate = if d < 32.0 { 1 } else { 2 };
+            if !tick_count.is_multiple_of(rate) {
+                continue;
+            }
+            mob.wander_timer -= dt * rate as f32;
+            if mob.wander_timer <= 0.0 {
+                mob.wander_timer = 2.0 + (mob.id as f32 * 0.37).sin().abs() * 4.0;
+                let a = (mob.id as f32 * 1.13 + time * 6.28).sin();
+                mob.yaw = a * std::f32::consts::TAU;
+            }
+            let speed = if mob.species.hostile() && d < 16.0 { 3.2 } else { 1.4 };
+            let dir = Vec3::new(mob.yaw.sin(), 0.0, -mob.yaw.cos());
+            let mut wish = dir * speed;
+            // Hostiles se acercan al jugador si está cerca.
+            if mob.species.hostile() && d < 24.0 {
+                let to = (player - mob.pos).normalize_or_zero();
+                wish = to * speed;
+                mob.yaw = to.x.atan2(-to.z);
+                if d < 1.4 {
+                    hits += 6.0 * dt * rate as f32;
+                }
+            }
+            mob.vel.x += (wish.x - mob.vel.x) * 0.2;
+            mob.vel.z += (wish.z - mob.vel.z) * 0.2;
+            mob.vel.y -= 26.0 * dt * rate as f32;
+            // Movimiento con colisión sencilla por ejes.
+            let half = Vec3::new(0.35, mob.species.size()[1] * 0.5, 0.35);
+            let center = mob.pos + Vec3::Y * half.y;
+            for axis in 0..3 {
+                let mut t = center;
+                t[axis] += mob.vel[axis] * dt * rate as f32;
+                if aabb_hits_blocks(&solid, t, half) {
+                    if axis == 1 && mob.vel[axis] < 0.0 {
+                        mob.on_ground = true;
+                    }
+                    mob.vel[axis] = 0.0;
+                    continue;
+                }
+                let mut c = center;
+                c[axis] = t[axis];
+                mob.pos = c - Vec3::Y * half.y;
+            }
+            let _ = player_eye;
+        }
+        for i in despawn.into_iter().rev() {
+            let mob = self.mobs.remove(i);
+            let _ = mob;
+        }
+        if hits > 0.0 {
+            self.health = (self.health - hits).max(0.0);
+            if self.health <= 0.0 {
+                self.audio.play(Sfx::Hurt, 1.0, 0.0);
+            }
+        }
+    }
+
+    /// Intenta spawnear un mob sobre una columna con superficie sólida.
+    pub fn try_spawn_mob(&mut self, species: MobSpecies) -> bool {
+        if self.mobs.len() >= 40 {
+            return false;
+        }
+        let a = (self.next_mob_id as f32 * 2.399).sin();
+        let b = (self.next_mob_id as f32 * 1.618).cos();
+        let dist = 14.0 + (self.next_mob_id as f32 * 0.7).sin().abs() * 18.0;
+        let x = (self.player.pos.x + a * dist).floor() as i32;
+        let z = (self.player.pos.z + b * dist).floor() as i32;
+        let mut y = (self.player.pos.y + 6.0).floor() as i32;
+        let floor_limit = (self.player.pos.y as i32 - 64).max(-128);
+        // Baja hasta encontrar suelo sólido.
+        while y > floor_limit {
+            let below = self.block_at(x, y - 1, z);
+            let here = self.block_at(x, y, z);
+            if below != 0 && below != 20 && (here == 0 || here == 20) {
+                break;
+            }
+            y -= 1;
+        }
+        if y <= floor_limit {
+            // Sin suelo cercano: cae al nivel del jugador si hay aire.
+            let fy = (self.player.pos.y + 1.0).floor() as i32;
+            if self.block_at(x, fy, z) != 0 {
+                return false;
+            }
+            y = fy;
+        }
+        self.mobs.push(MobEntity {
+            species,
+            pos: Vec3::new(x as f32 + 0.5, y as f32, z as f32 + 0.5),
+            vel: Vec3::ZERO,
+            yaw: 0.0,
+            health: 10.0,
+            wander_timer: 1.0,
+            on_ground: false,
+            id: self.next_mob_id,
+        });
+        self.next_mob_id += 1;
+        true
+    }
+
+    /// Golpea al mob más cercano en la línea de visión (clic izquierdo).
+    pub fn attack_mob(&mut self) -> bool {
+        let eye = self.player.eye();
+        let fwd = self.player.forward();
+        let mut best: Option<(usize, f32)> = None;
+        for (i, mob) in self.mobs.iter().enumerate() {
+            let to = mob.pos + Vec3::Y * mob.species.size()[1] * 0.5 - eye;
+            let dist = to.length();
+            if dist > 4.5 {
+                continue;
+            }
+            let dot = to.normalize().dot(fwd);
+            if dot > 0.94 && best.map(|(_, bd)| dist < bd).unwrap_or(true) {
+                best = Some((i, dist));
+            }
+        }
+        let Some((i, _)) = best else {
+            return false;
+        };
+        let dmg = match self.inventory.held() {
+            Some(s) => {
+                let td = item_def(s.id);
+                if matches!(td.tool, rivaren_gameplay::ToolKind::Blade) {
+                    6.0
+                } else {
+                    2.0
+                }
+            }
+            None => 1.5,
+        };
+        let mut died = false;
+        {
+            let mob = &mut self.mobs[i];
+            mob.health -= dmg;
+            if mob.health <= 0.0 {
+                died = true;
+            }
+        }
+        self.audio.play(Sfx::Hurt, 0.6, 0.0);
+        if died {
+            let mob = self.mobs.remove(i);
+            match mob.species {
+                MobSpecies::Uro => {
+                    self.inventory.add(ItemStack::with_count(40, 2));
+                    self.karma.add(KarmaAxis::Compasion, -2.0);
+                }
+                MobSpecies::Jabali => {
+                    self.inventory.add(ItemStack::with_count(60, 2));
+                    self.karma.add(KarmaAxis::Compasion, -1.0);
+                }
+                MobSpecies::ZorroBruma => {
+                    self.inventory.add(ItemStack::with_count(45, 1));
+                    self.karma.add(KarmaAxis::Sabiduria, 2.0);
+                }
+                MobSpecies::Acechador => {
+                    self.inventory.add(ItemStack::with_count(43, 1));
+                    self.karma.add(KarmaAxis::Justicia, 4.0);
+                }
+                MobSpecies::PenitenteErrante => {
+                    self.inventory.add(ItemStack::with_count(41, 1));
+                    self.karma.add(KarmaAxis::Compasion, 2.0);
+                }
+            }
+        }
+        true
+    }
+
     pub fn tick(&mut self, dt: f32) {
+        self.tick_count += 1;
+        self.tick_mobs(dt);
+        // Spawn de mobs con presupuesto (cada ~4 s uno).
+        self.mob_spawn_timer -= dt;
+        if self.mob_spawn_timer <= 0.0 {
+            self.mob_spawn_timer = 4.0;
+            let night = !(0.25..0.75).contains(&self.time_of_day);
+            let species = if night && self.tick_count.is_multiple_of(3) {
+                MobSpecies::Acechador
+            } else {
+                match self.next_mob_id % 4 {
+                    0 => MobSpecies::Uro,
+                    1 => MobSpecies::Jabali,
+                    2 => MobSpecies::ZorroBruma,
+                    _ => MobSpecies::Jabali,
+                }
+            };
+            if self.dimension == Dimension::Tierra {
+                self.try_spawn_mob(species);
+            } else if self.dimension == Dimension::Infierno && self.tick_count.is_multiple_of(2) {
+                self.try_spawn_mob(MobSpecies::PenitenteErrante);
+            }
+        }
         // Pulso a 20 TPS.
         self.pulso_accum += dt;
         if self.pulso_accum >= 0.05 {
@@ -1121,6 +1404,26 @@ pub struct PlayerInput {
     pub sprint: bool,
 }
 
+/// Colisión AABB contra bloques vía función (evita préstamos de &self).
+pub fn aabb_hits_blocks(
+    solid: &impl Fn(i32, i32, i32) -> bool,
+    center: Vec3,
+    half: Vec3,
+) -> bool {
+    let min = center - half;
+    let max = center + half;
+    for y in min.y.floor() as i32..=max.y.ceil() as i32 {
+        for z in min.z.floor() as i32..=max.z.ceil() as i32 {
+            for x in min.x.floor() as i32..=max.x.ceil() as i32 {
+                if solid(x, y, z) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Mapea bloque colocado a componente de Pulso.
 pub fn pulso_kind_for_block(b: u16) -> Option<PulsoKind> {
     match b {
@@ -1175,7 +1478,7 @@ fn generate_sky_chunk(seed: u64, chunk: IVec3) -> rivaren_world::pipeline::Chunk
     let base_y = chunk.y * 32;
     for y in 0..32 {
         let wy = base_y + y as i32;
-        if wy < 90 || wy > 220 {
+        if !(90..=220).contains(&wy) {
             continue;
         }
         for z in 0..32 {
