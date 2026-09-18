@@ -53,6 +53,8 @@ pub struct KarmaAxisDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModManifest {
+    /// Identificador del mod; si falta se usa el nombre.
+    #[serde(default)]
     pub mod_id: String,
     #[serde(default)]
     pub version: String,
@@ -126,6 +128,9 @@ impl ModRegistry {
         let mut manifest: ModManifest = serde_json::from_str(text).context("JSON inválido")?;
         if manifest.name.is_empty() {
             manifest.name = manifest.mod_id.clone();
+        }
+        if manifest.mod_id.is_empty() {
+            manifest.mod_id = manifest.name.clone();
         }
         let mut block_ids = Vec::new();
         for b in &manifest.blocks {

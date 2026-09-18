@@ -71,9 +71,11 @@ pub struct App {
     pub error: Option<String>,
     pub save_name: String,
     pub settings_tab: usize,
+    pub quickstart: bool,
 }
 
 pub fn run() -> Result<()> {
+    let quickstart = std::env::args().any(|a| a == "--quickstart");
     let event_loop = EventLoop::new()?;
     // Mods de datos (JSON) desde la carpeta de usuario.
     let mut mod_registry = rivaren_mods::ModRegistry::new();
@@ -129,6 +131,7 @@ pub fn run() -> Result<()> {
         error: None,
         save_name: "mundo".into(),
         settings_tab: 0,
+        quickstart,
     };
     app.text_buffers.insert(1000, String::new()); // seed
     app.text_buffers.insert(1001, app.world_cfg.name.clone());
@@ -140,6 +143,7 @@ pub fn run() -> Result<()> {
 
 impl App {
     fn init_gpu(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        let _ = &self.quickstart;
         let window = Arc::new(event_loop.create_window(
             WindowAttributes::default()
                 .with_title("RIVAREN")
@@ -156,6 +160,9 @@ impl App {
         let renderer = Renderer::new(Some(window.clone()), (size.width, size.height), tier)?;
         self.renderer = Some(renderer);
         self.window = Some(window);
+        if self.quickstart {
+            self.start_world("quickstart".into(), None);
+        }
         if std::env::var("RIVAREN_DEBUG").is_ok() {
             eprintln!("[dbg] gpu listo");
         }

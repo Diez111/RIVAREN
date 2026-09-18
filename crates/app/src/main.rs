@@ -98,6 +98,7 @@ fn run_screenshot(path: &str) -> Result<()> {
         error: None,
         save_name: "mundo".into(),
         settings_tab: 0,
+        quickstart: false,
     };
     app.input.screen = (960.0, 600.0);
     let mut draw = DrawList::default();
