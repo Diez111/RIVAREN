@@ -112,19 +112,34 @@ fn build_all(args: &[String]) -> Result<()> {
 }
 
 fn check_all() -> Result<()> {
-    println!("◆ check-all: los 4 targets (rápido, sin codegen)");
-    TARGETS.par_iter().try_for_each(|t| {
+    println!("◆ check-all: targets (rápido, sin codegen)");
+    // macOS desde Linux requiere SDK (crates con C: ring, wasmtime...). Se omite
+    // con aviso; en CI se compila en runners nativos.
+    let mac_sdk = std::env::var("SDKROOT").is_ok();
+    let mut failed = false;
+    for t in TARGETS {
+        if t.label.starts_with("mac") && !mac_sdk && cfg!(target_os = "linux") {
+            println!("  ⚠ {} omitido (sin SDKROOT; usar CI macOS nativo)", t.label);
+            continue;
+        }
         let st = Command::new("cargo")
-            .arg("check").arg("--workspace").arg("--all-targets")
-            .arg("--target").arg(t.name)
+            .arg("check")
+            .arg("--workspace")
+            .arg("--all-targets")
+            .arg("--target")
+            .arg(t.name)
             .status()
             .with_context(|| format!("check {}", t.name))?;
         if !st.success() {
-            anyhow::bail!("check falló para {}", t.name);
+            failed = true;
+            println!("  ✗ {} falló", t.label);
+        } else {
+            println!("  ✓ {} OK", t.label);
         }
-        Ok(())
-    })?;
-    println!("  ✓ todos los targets pasan check");
+    }
+    if failed {
+        anyhow::bail!("algún target falló check");
+    }
     Ok(())
 }
 
