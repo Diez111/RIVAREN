@@ -185,8 +185,13 @@ fn frames_from(samples: Vec<f32>) -> StaticSoundData {
     }
 }
 
+/// Máximo de frames por sonido (12 s a 44.1 kHz): protege ante duraciones
+/// inválidas y mantiene la memoria acotada en todas las plataformas.
+const MAX_FRAMES: usize = SR as usize * 12;
+
 fn tone(freq: f32, dur: f32, shape: fn(f32) -> f32, decay: f32) -> Vec<f32> {
-    let n = ((SR as f32 * dur) as usize).max(1);
+    let dur = if dur.is_finite() && dur > 0.0 { dur } else { 0.01 };
+    let n = ((SR as f32 * dur) as usize).clamp(1, MAX_FRAMES);
     (0..n)
         .map(|i| {
             let t = i as f32 / SR as f32;
@@ -205,7 +210,7 @@ fn synth_ui(freq: f32) -> StaticSoundData {
 }
 
 fn synth_step() -> StaticSoundData {
-    let n = (SR as f32 * 0.10) as usize;
+    let n = ((SR as f32 * 0.10) as usize).clamp(1, MAX_FRAMES);
     let mut rng: u64 = 0x1234_5678;
     let samples: Vec<f32> = (0..n)
         .map(|i| {
@@ -225,7 +230,7 @@ fn synth_place() -> StaticSoundData {
 }
 
 fn synth_break() -> StaticSoundData {
-    let n = (SR as f32 * 0.18) as usize;
+    let n = ((SR as f32 * 0.18) as usize).clamp(1, MAX_FRAMES);
     let mut rng: u64 = 0xDEAD_BEEF;
     let samples: Vec<f32> = (0..n)
         .map(|i| {
@@ -240,7 +245,7 @@ fn synth_break() -> StaticSoundData {
 }
 
 fn synth_hurt() -> StaticSoundData {
-    let n = (SR as f32 * 0.25) as usize;
+    let n = ((SR as f32 * 0.25) as usize).clamp(1, MAX_FRAMES);
     let samples: Vec<f32> = (0..n)
         .map(|i| {
             let t = i as f32 / SR as f32;
@@ -270,7 +275,7 @@ fn synth_level_up() -> StaticSoundData {
 }
 
 fn synth_portal() -> StaticSoundData {
-    let n = (SR as f32 * 1.2) as usize;
+    let n = ((SR as f32 * 1.2) as usize).clamp(1, MAX_FRAMES);
     let samples: Vec<f32> = (0..n)
         .map(|i| {
             let t = i as f32 / SR as f32;
@@ -284,7 +289,7 @@ fn synth_portal() -> StaticSoundData {
 }
 
 fn synth_rain() -> StaticSoundData {
-    let n = (SR as f32 * 0.6) as usize;
+    let n = ((SR as f32 * 0.6) as usize).clamp(1, MAX_FRAMES);
     let mut rng: u64 = 0xABCD_EF01;
     let samples: Vec<f32> = (0..n)
         .map(|i| {
@@ -308,7 +313,7 @@ fn synth_ambient(scape: Soundscape) -> StaticSoundData {
         Soundscape::Oceano => (98.0, 123.5, 147.0),
     };
     let dur = 8.0f32;
-    let n = (SR as f32 * dur) as usize;
+    let n = ((SR as f32 * dur) as usize).clamp(1, MAX_FRAMES);
     let mut a: u64 = 0x1;
     let samples: Vec<f32> = (0..n)
         .map(|i| {
@@ -334,25 +339,34 @@ fn synth_ambient(scape: Soundscape) -> StaticSoundData {
 mod tests {
     use super::*;
     #[test]
-    fn synth_generates_frames() {
-        for d in [
-            synth_click(),
-            synth_step(),
-            synth_place(),
-            synth_break(),
-            synth_hurt(),
-            synth_craft(),
-            synth_portal(),
-            synth_level_up(),
-            synth_ui(520.0),
-            synth_rain(),
-        ] {
-            assert_eq!(d.sample_rate, SR);
-            assert!(
-                !d.frames.is_empty(),
-                "sonido sintetizado con 0 frames (duración demasiado corta)"
-            );
-        }
+    fn synth_click_ok() {
+        let d = synth_click();
+        assert_eq!(d.sample_rate, SR);
+        assert!(!d.frames.is_empty());
+    }
+    #[test]
+    fn synth_step_ok() {
+        assert!(!synth_step().frames.is_empty());
+    }
+    #[test]
+    fn synth_place_break_ok() {
+        assert!(!synth_place().frames.is_empty());
+        assert!(!synth_break().frames.is_empty());
+    }
+    #[test]
+    fn synth_hurt_craft_ok() {
+        assert!(!synth_hurt().frames.is_empty());
+        assert!(!synth_craft().frames.is_empty());
+    }
+    #[test]
+    fn synth_portal_levelup_ok() {
+        assert!(!synth_portal().frames.is_empty());
+        assert!(!synth_level_up().frames.is_empty());
+    }
+    #[test]
+    fn synth_ui_rain_ok() {
+        assert!(!synth_ui(520.0).frames.is_empty());
+        assert!(!synth_rain().frames.is_empty());
     }
     #[test]
     fn ambient_loops() {
