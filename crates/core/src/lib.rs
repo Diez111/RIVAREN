@@ -208,13 +208,17 @@ pub struct Fixed(pub i32);
 
 impl Fixed {
     pub const SCALE: i32 = 256;
+    /// Recíproco exacto (potencia de 2): multiplicar es exacto en IEEE-754
+    /// en todas las arquitecturas, mientras que dividir puede redondear
+    /// distinto en ARM (NEON) y x86 (SSE).
+    const INV_SCALE: f32 = 1.0 / 256.0;
     #[inline(always)]
     pub fn from_f32(v: f32) -> Self {
-        Self((v * Self::SCALE as f32) as i32)
+        Self((v * Self::SCALE as f32).round() as i32)
     }
     #[inline(always)]
     pub fn to_f32(self) -> f32 {
-        self.0 as f32 / Self::SCALE as f32
+        self.0 as f32 * Self::INV_SCALE
     }
 }
 
@@ -280,6 +284,8 @@ mod tests {
         assert_eq!(Fixed::from_f32(1.5).0, 384);
         assert_eq!(Fixed::from_f32(-2.25).0, -576);
         assert_eq!(Fixed::from_f32(0.0).0, 0);
-        assert!((Fixed::from_f32(1.5).to_f32() - 1.5).abs() < 1e-6);
+        // Roundtrip exacto garantizado por aritmética de potencias de 2.
+        assert_eq!(Fixed::from_f32(1.5).to_f32().to_bits(), 1.5f32.to_bits());
+        assert_eq!(Fixed::from_f32(-2.25).to_f32().to_bits(), (-2.25f32).to_bits());
     }
 }
