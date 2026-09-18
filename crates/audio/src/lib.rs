@@ -163,14 +163,20 @@ impl AudioEngine {
 const SR: u32 = 44100;
 
 fn frames_from(samples: Vec<f32>) -> StaticSoundData {
-    let frames: Arc<[Frame]> = samples
-        .iter()
-        .map(|s| Frame {
-            left: *s,
-            right: *s,
-        })
-        .collect::<Vec<_>>()
-        .into();
+    // Nunca devolver un sonido vacío: en algunas plataformas el redondeo
+    // de `SR as f32 * dur` puede dar 0 para duraciones muy cortas.
+    let frames: Arc<[Frame]> = if samples.is_empty() {
+        vec![Frame::ZERO].into()
+    } else {
+        samples
+            .iter()
+            .map(|s| Frame {
+                left: *s,
+                right: *s,
+            })
+            .collect::<Vec<_>>()
+            .into()
+    };
     StaticSoundData {
         sample_rate: SR,
         frames,
@@ -180,7 +186,7 @@ fn frames_from(samples: Vec<f32>) -> StaticSoundData {
 }
 
 fn tone(freq: f32, dur: f32, shape: fn(f32) -> f32, decay: f32) -> Vec<f32> {
-    let n = (SR as f32 * dur) as usize;
+    let n = ((SR as f32 * dur) as usize).max(1);
     (0..n)
         .map(|i| {
             let t = i as f32 / SR as f32;
@@ -329,9 +335,24 @@ mod tests {
     use super::*;
     #[test]
     fn synth_generates_frames() {
-        let d = synth_click();
-        assert_eq!(d.sample_rate, SR);
-        assert!(!d.frames.is_empty());
+        for d in [
+            synth_click(),
+            synth_step(),
+            synth_place(),
+            synth_break(),
+            synth_hurt(),
+            synth_craft(),
+            synth_portal(),
+            synth_level_up(),
+            synth_ui(520.0),
+            synth_rain(),
+        ] {
+            assert_eq!(d.sample_rate, SR);
+            assert!(
+                !d.frames.is_empty(),
+                "sonido sintetizado con 0 frames (duración demasiado corta)"
+            );
+        }
     }
     #[test]
     fn ambient_loops() {
